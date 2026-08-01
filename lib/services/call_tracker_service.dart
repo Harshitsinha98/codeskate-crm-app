@@ -75,13 +75,29 @@ class CallTrackerService {
       _running = true;
 
       // Catch up on a call that ended while the app was backgrounded.
+      await catchUp();
+      debugPrint('Call tracker started.');
+    } catch (e) {
+      debugPrint('Call tracker unavailable: $e');
+    }
+  }
+
+  /// Re-check the CallLog for a completed call that the live listener may have
+  /// missed (e.g. the call ended while the app was backgrounded, which is
+  /// common on Android due to OEM background limits). Safe to call repeatedly;
+  /// [_handleCall] is idempotent and advances the native cursor.
+  ///
+  /// Call this on app resume so a matched call is never dropped.
+  Future<void> catchUp() async {
+    if (!_running) return;
+    if (_getOrgId?.call() == null) return; // Not signed in.
+    try {
       final last = await _method.invokeMethod<dynamic>('getLastCall');
       if (last is Map && last['found'] == true) {
         await _handleCall(Map<String, dynamic>.from(last));
       }
-      debugPrint('Call tracker started.');
     } catch (e) {
-      debugPrint('Call tracker unavailable: $e');
+      debugPrint('Call tracker catch-up failed: $e');
     }
   }
 
