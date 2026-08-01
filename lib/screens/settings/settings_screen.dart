@@ -248,11 +248,11 @@ class _SettingsSection extends StatelessWidget {
           ),
           child: Column(
             children: children
-                .map((child) => Column(children: [
+                .map<List<Widget>>((child) => [
                       child,
                       if (child != children.last)
                         const Divider(height: 1, indent: 56),
-                    ]))
+                    ])
                 .expand((e) => e)
                 .toList(),
           ),

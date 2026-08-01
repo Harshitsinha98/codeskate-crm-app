@@ -99,7 +99,7 @@ class AuthProvider extends ChangeNotifier {
         displayName: displayName,
         activeOrgId: activeOrgId,
         activeOrgRole: activeMembership.role,
-        activeOrgName: orgDoc.exists ? orgDoc.data()?['name'] ?? 'Organization' : 'Organization',
+        activeOrgName: orgDoc.exists ? (orgDoc.data()?['name'] ?? 'Organization') : 'Organization',
         memberships: memberships,
       );
 
@@ -220,7 +220,7 @@ class AuthProvider extends ChangeNotifier {
         displayName: _user!.displayName,
         activeOrgId: orgId,
         activeOrgRole: membership.role,
-        activeOrgName: orgDoc.exists ? orgDoc.data()?['name'] ?? 'Organization' : 'Organization',
+        activeOrgName: orgDoc.exists ? (orgDoc.data()?['name'] ?? 'Organization') : 'Organization',
         memberships: _user!.memberships,
       );
       notifyListeners();
