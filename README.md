@@ -56,18 +56,42 @@ lib/
 - Android Studio or VS Code with Flutter plugin
 - Firebase project (same backend as SNS-ADS-ERP web CRM)
 
-### Configuration
+### Configuration (Android)
 
-1. **Firebase Setup:**
-   - Download `google-services.json` from Firebase Console
-   - Place it in `android/app/` directory
-   - Update `lib/firebase_options.dart` with your Firebase config
+The repo intentionally does **not** commit the generated Android Gradle
+wrapper / launcher icons. Generate them with `flutter create`, then run the
+setup script which applies the Firebase (Google Services) configuration.
 
-2. **Run the app:**
-   ```bash
-   flutter pub get
-   flutter run
-   ```
+```bash
+# 1. Clone and enter the project
+git clone --branch feature/flutter-crm-app --single-branch \
+  https://github.com/Harshitsinha98/codeskate-crm-app.git
+cd codeskate-crm-app
+
+# 2. Generate the Android platform files
+flutter create --platforms=android .
+flutter pub get
+
+# 3. Apply the Firebase Android configuration (Gradle + package name)
+bash scripts/setup_android.sh
+
+# 4. Add your Firebase config file (NEVER commit this)
+#    Download google-services.json from Firebase Console
+#    (Project Settings -> your Android app: com.codeskate.crm)
+#    and place it here:
+#      android/app/google-services.json
+
+# 5. Update lib/firebase_options.dart with your Firebase values
+#    (or run: flutterfire configure --platforms=android)
+
+# 6. Run on a connected device / emulator
+flutter run
+```
+
+> **Phone OTP note:** In Firebase Console, enable Authentication -> Sign-in
+> method -> Phone, add your debug SHA-1 (get it via
+> `cd android && ./gradlew signingReport`) to the Android app, and optionally
+> add a test phone number + code for deterministic testing.
 
 ### Firebase Collections Used
 
