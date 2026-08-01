@@ -191,15 +191,27 @@ class AuthProvider extends ChangeNotifier {
 
   /// Verify the manually entered OTP code.
   Future<bool> verifyOtp(String otp) async {
+    // If auto-verification already signed us in, treat as success.
+    if (_auth.currentUser != null && _state == AuthState.authenticated) {
+      return true;
+    }
+    // Still loading profile after auto-verify? Wait briefly.
+    if (_auth.currentUser != null && _state == AuthState.loading) {
+      // Already signed in, profile is loading — just wait for it.
+      for (int i = 0; i < 10; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (_state == AuthState.authenticated) return true;
+      }
+      // Timed out waiting for profile but user IS signed in.
+      return true;
+    }
+
     if (_verificationId == null) {
       _error = 'Session expired. Please request a new OTP.';
       _state = AuthState.error;
       notifyListeners();
       return false;
     }
-
-    // If auto-verification already signed us in, treat as success.
-    if (_auth.currentUser != null) return true;
 
     _state = AuthState.loading;
     _error = '';
@@ -213,11 +225,15 @@ class AuthProvider extends ChangeNotifier {
       await _auth.signInWithCredential(credential);
       return true;
     } on FirebaseAuthException catch (e) {
+      // If user is already signed in (auto-verify happened concurrently), 
+      // treat session-expired/invalid-code gracefully.
+      if (_auth.currentUser != null) return true;
       _error = _mapFirebaseError(e.code);
       _state = AuthState.otpSent;
       notifyListeners();
       return false;
     } catch (e) {
+      if (_auth.currentUser != null) return true;
       _error = 'OTP verification failed. Please try again.';
       _state = AuthState.otpSent;
       notifyListeners();

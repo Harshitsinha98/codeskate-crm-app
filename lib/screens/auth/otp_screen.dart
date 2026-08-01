@@ -43,8 +43,13 @@ class _OtpScreenState extends State<OtpScreen> {
     if (!mounted) return;
     final auth = _auth;
     if (auth == null) return;
-    if (auth.isAuthenticated || auth.autoVerified) {
-      context.go('/dashboard');
+    // Navigate as soon as user is authenticated OR when auto-verify fired
+    // (even if profile is still loading — the router redirect handles it).
+    if (auth.isAuthenticated || auth.autoVerified || auth.state == AuthState.loading) {
+      // Only navigate once we're truly authenticated (profile loaded).
+      if (auth.isAuthenticated) {
+        context.go('/dashboard');
+      }
     }
   }
 
