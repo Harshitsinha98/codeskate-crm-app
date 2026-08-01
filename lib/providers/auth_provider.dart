@@ -14,12 +14,15 @@ class AuthProvider extends ChangeNotifier {
   String? _verificationId;
   int? _resendToken;
   String _error = '';
+  String _lastPhone = '';
+  bool _autoVerified = false;
 
   AuthState get state => _state;
   UserModel? get user => _user;
   String get error => _error;
   bool get isAuthenticated => _user != null && _state == AuthState.authenticated;
   bool get isLoading => _state == AuthState.loading;
+  bool get autoVerified => _autoVerified;
 
   AuthProvider() {
     _init();
@@ -37,7 +40,21 @@ class AuthProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> _loadUserProfile(User firebaseUser) async {
+  /// Normalize an Indian phone number to E.164 (+91XXXXXXXXXX).
+  /// Returns null if it cannot produce a valid 10-digit number.
+  String? _toE164(String raw) {
+    var digits = raw.replaceAll(RegExp(r'\D'), '');
+    // Drop leading country code / trunk prefixes if present.
+    if (digits.length > 10 && digits.startsWith('91')) {
+      digits = digits.substring(digits.length - 10);
+    } else if (digits.length > 10) {
+      digits = digits.substring(digits.length - 10);
+    }
+    if (digits.length != 10) return null;
+    return '+91$digits';
+  }
+
+  Future<void> _loadUserProfile(User firebaseUser, {int attempt = 0}) async {
     try {
       _state = AuthState.loading;
       notifyListeners();
@@ -45,7 +62,6 @@ class AuthProvider extends ChangeNotifier {
       final uid = firebaseUser.uid;
       final phone = firebaseUser.phoneNumber;
 
-      // Load memberships
       final membershipsSnap = await _db
           .collection('memberships')
           .where('uid', isEqualTo: uid)
@@ -54,24 +70,20 @@ class AuthProvider extends ChangeNotifier {
 
       final activeMemberships = membershipsSnap.docs.where((doc) {
         final expiresAtMs = doc.data()['expiresAtMs'] as int?;
-        return expiresAtMs == null || expiresAtMs == 0 || expiresAtMs > DateTime.now().millisecondsSinceEpoch;
+        return expiresAtMs == null ||
+            expiresAtMs == 0 ||
+            expiresAtMs > DateTime.now().millisecondsSinceEpoch;
       }).toList();
 
       if (activeMemberships.isEmpty) {
-        _user = UserModel(
-          uid: uid,
-          phone: phone,
-          needsSetup: true,
-        );
+        _user = UserModel(uid: uid, phone: phone, needsSetup: true);
         _state = AuthState.authenticated;
         notifyListeners();
         return;
       }
 
-      // Get user profile
       final userDoc = await _db.collection('users').doc(uid).get();
 
-      // Build memberships list
       final memberships = activeMemberships.map((m) {
         final data = m.data();
         return OrgMembership(
@@ -82,15 +94,17 @@ class AuthProvider extends ChangeNotifier {
         );
       }).toList();
 
-      // Determine active org
       final activeOrgId = memberships.first.orgId;
       final activeMembership = memberships.first;
 
-      // Get org details
-      final orgDoc = await _db.collection('organizations').doc(activeOrgId).get();
+      final orgDoc =
+          await _db.collection('organizations').doc(activeOrgId).get();
 
       final displayName = userDoc.exists
-          ? (userDoc.data()?['displayName'] ?? activeMembership.displayName ?? phone ?? 'User')
+          ? (userDoc.data()?['displayName'] ??
+              activeMembership.displayName ??
+              phone ??
+              'User')
           : (activeMembership.displayName ?? phone ?? 'User');
 
       _user = UserModel(
@@ -99,35 +113,56 @@ class AuthProvider extends ChangeNotifier {
         displayName: displayName,
         activeOrgId: activeOrgId,
         activeOrgRole: activeMembership.role,
-        activeOrgName: orgDoc.exists ? (orgDoc.data()?['name'] ?? 'Organization') : 'Organization',
+        activeOrgName: orgDoc.exists
+            ? (orgDoc.data()?['name'] ?? 'Organization')
+            : 'Organization',
         memberships: memberships,
       );
 
       _state = AuthState.authenticated;
       notifyListeners();
     } catch (e) {
-      debugPrint('Error loading user profile: $e');
-      _error = 'Failed to load profile. Please try again.';
+      debugPrint('Error loading user profile (attempt $attempt): $e');
+      // Transient Firestore errors (offline, cold start) — retry a couple times.
+      if (attempt < 2) {
+        await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
+        return _loadUserProfile(firebaseUser, attempt: attempt + 1);
+      }
+      _error = 'Failed to load your profile. Check your connection and retry.';
       _state = AuthState.error;
       notifyListeners();
     }
   }
 
-  /// Send OTP to phone number
+  /// Send OTP to phone number. [phoneNumber] is the raw 10-digit input.
   Future<bool> sendOtp(String phoneNumber) async {
-    try {
-      _state = AuthState.loading;
-      _error = '';
+    final e164 = _toE164(phoneNumber);
+    if (e164 == null) {
+      _error = 'Enter a valid 10-digit mobile number.';
+      _state = AuthState.error;
       notifyListeners();
+      return false;
+    }
 
-      final phone = '+91${phoneNumber.replaceAll(RegExp(r'\D'), '').substring(phoneNumber.replaceAll(RegExp(r'\D'), '').length - 10)}';
+    _lastPhone = e164;
+    _autoVerified = false;
+    _state = AuthState.loading;
+    _error = '';
+    notifyListeners();
 
+    try {
       await _auth.verifyPhoneNumber(
-        phoneNumber: phone,
+        phoneNumber: e164,
         timeout: const Duration(seconds: 60),
         verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-sign in (Android only)
-          await _auth.signInWithCredential(credential);
+          // Android instant/auto verification — sign in directly.
+          try {
+            await _auth.signInWithCredential(credential);
+            _autoVerified = true;
+            notifyListeners();
+          } catch (e) {
+            debugPrint('Auto verification sign-in failed: $e');
+          }
         },
         verificationFailed: (FirebaseAuthException e) {
           _error = _mapFirebaseError(e.code);
@@ -145,7 +180,6 @@ class AuthProvider extends ChangeNotifier {
         },
         forceResendingToken: _resendToken,
       );
-
       return true;
     } catch (e) {
       _error = 'Failed to send OTP. Please try again.';
@@ -155,7 +189,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Verify OTP code
+  /// Verify the manually entered OTP code.
   Future<bool> verifyOtp(String otp) async {
     if (_verificationId == null) {
       _error = 'Session expired. Please request a new OTP.';
@@ -164,21 +198,23 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
 
-    try {
-      _state = AuthState.loading;
-      _error = '';
-      notifyListeners();
+    // If auto-verification already signed us in, treat as success.
+    if (_auth.currentUser != null) return true;
 
+    _state = AuthState.loading;
+    _error = '';
+    notifyListeners();
+
+    try {
       final credential = PhoneAuthProvider.credential(
         verificationId: _verificationId!,
-        smsCode: otp,
+        smsCode: otp.trim(),
       );
-
       await _auth.signInWithCredential(credential);
       return true;
     } on FirebaseAuthException catch (e) {
       _error = _mapFirebaseError(e.code);
-      _state = AuthState.otpSent; // Stay on OTP screen
+      _state = AuthState.otpSent;
       notifyListeners();
       return false;
     } catch (e) {
@@ -189,27 +225,23 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Resend OTP
-  Future<bool> resendOtp(String phoneNumber) async {
-    return sendOtp(phoneNumber);
-  }
+  Future<bool> resendOtp(String phoneNumber) => sendOtp(phoneNumber);
 
-  /// Sign out
   Future<void> signOut() async {
     await _auth.signOut();
     _user = null;
     _verificationId = null;
     _resendToken = null;
+    _autoVerified = false;
     _state = AuthState.unauthenticated;
     _error = '';
     notifyListeners();
   }
 
-  /// Switch active organization
   Future<bool> switchOrg(String orgId) async {
     if (_user == null) return false;
-
-    final membership = _user!.memberships.where((m) => m.orgId == orgId).firstOrNull;
+    final membership =
+        _user!.memberships.where((m) => m.orgId == orgId).firstOrNull;
     if (membership == null) return false;
 
     try {
@@ -220,13 +252,24 @@ class AuthProvider extends ChangeNotifier {
         displayName: _user!.displayName,
         activeOrgId: orgId,
         activeOrgRole: membership.role,
-        activeOrgName: orgDoc.exists ? (orgDoc.data()?['name'] ?? 'Organization') : 'Organization',
+        activeOrgName: orgDoc.exists
+            ? (orgDoc.data()?['name'] ?? 'Organization')
+            : 'Organization',
         memberships: _user!.memberships,
       );
       notifyListeners();
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// Firebase ID token for authenticated backend calls (WhatsApp send, etc.).
+  Future<String?> getIdToken() async {
+    try {
+      return await _auth.currentUser?.getIdToken();
+    } catch (_) {
+      return null;
     }
   }
 
@@ -238,11 +281,13 @@ class AuthProvider extends ChangeNotifier {
   String _mapFirebaseError(String code) {
     switch (code) {
       case 'invalid-phone-number':
-        return 'Invalid phone number. Please enter a valid 10-digit number.';
+        return 'Invalid phone number. Enter a valid 10-digit number.';
       case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
+        return 'Too many attempts. Please try again after some time.';
       case 'invalid-verification-code':
         return 'Incorrect OTP. Please check and try again.';
+      case 'missing-client-identifier':
+        return 'App verification failed. Ensure SHA-1 & SHA-256 are added in Firebase and Play Integrity is enabled.';
       case 'session-expired':
       case 'code-expired':
         return 'OTP expired. Please request a new one.';

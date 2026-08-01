@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -19,6 +18,7 @@ class ConversationScreen extends StatefulWidget {
 
 class _ConversationScreenState extends State<ConversationScreen> {
   final _scrollController = ScrollController();
+  final _messageController = TextEditingController();
 
   @override
   void initState() {
@@ -32,7 +32,65 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void dispose() {
     context.read<ChatProvider>().closeConversation();
     _scrollController.dispose();
+    _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
+    final chat = context.read<ChatProvider>();
+    final result = await chat.sendMessage(widget.leadId, text);
+    if (!mounted) return;
+    if (result.ok) {
+      _messageController.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } else {
+      final msg = result.code == 'template_required'
+          ? 'The 24-hour reply window has closed. An approved template is required (use the web CRM).'
+          : result.code == 'no_backend'
+              ? 'Backend URL not set. Run with --dart-define=BACKEND_URL=...'
+              : (result.error ?? 'Could not send message.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  Future<void> _takeOver() async {
+    final chat = context.read<ChatProvider>();
+    final result = await chat.takeOver(widget.leadId);
+    if (!mounted) return;
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.error ?? 'Could not take over the chat.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _reEnableAi() async {
+    final chat = context.read<ChatProvider>();
+    final result = await chat.reEnableAI(widget.leadId);
+    if (!mounted) return;
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.error ?? 'Could not re-enable AI.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   @override
@@ -91,18 +149,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
         ],
       ),
       body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: const AssetImage('assets/images/chat_bg.png'),
-            fit: BoxFit.cover,
-            colorFilter: ColorFilter.mode(
-              AppColors.background.withOpacity(0.95),
-              BlendMode.srcOver,
-            ),
-          ),
-        ),
+        color: AppColors.background,
         child: Column(
           children: [
+            // AI status / human-takeover control bar
+            _AiStatusBar(
+              aiEnabled: lead?.aiEnabled ?? true,
+              busy: chat.isTogglingAi,
+              onTakeOver: _takeOver,
+              onReEnableAi: _reEnableAi,
+            ),
             // Messages
             Expanded(
               child: messages.isEmpty
@@ -141,24 +197,62 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     ),
             ),
 
-            // Read-only indicator (messages sent via backend only)
+            // Reply composer
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 border: Border(top: BorderSide(color: AppColors.divider)),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.lock_outline_rounded, size: 16, color: AppColors.textTertiary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Messages are managed through the CRM backend',
-                      style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: TextField(
+                          controller: _messageController,
+                          minLines: 1,
+                          maxLines: 5,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: const InputDecoration(
+                            hintText: 'Type a reply…',
+                            border: InputBorder.none,
+                            contentPadding:
+                                EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: chat.isSending ? null : _sendMessage,
+                      child: Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: chat.isSending
+                              ? AppColors.whatsapp.withOpacity(0.5)
+                              : AppColors.whatsapp,
+                          borderRadius: BorderRadius.circular(23),
+                        ),
+                        child: chat.isSending
+                            ? const Padding(
+                                padding: EdgeInsets.all(13),
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.send_rounded,
+                                size: 20, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -262,6 +356,82 @@ class _MessageBubble extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+/// Shows whether AI is auto-replying or a human has taken over, with a
+/// toggle to take over / re-enable AI (mirrors the web CRM ChatSessionControls).
+class _AiStatusBar extends StatelessWidget {
+  final bool aiEnabled;
+  final bool busy;
+  final VoidCallback onTakeOver;
+  final VoidCallback onReEnableAi;
+
+  const _AiStatusBar({
+    required this.aiEnabled,
+    required this.busy,
+    required this.onTakeOver,
+    required this.onReEnableAi,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bg = aiEnabled
+        ? AppColors.info.withOpacity(0.08)
+        : AppColors.warning.withOpacity(0.12);
+    final Color fg = aiEnabled ? AppColors.info : AppColors.secondaryDark;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      color: bg,
+      child: Row(
+        children: [
+          Icon(
+            aiEnabled ? Icons.smart_toy_rounded : Icons.person_rounded,
+            size: 18,
+            color: fg,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              aiEnabled
+                  ? 'AI is auto-replying to this customer'
+                  : 'Human handling — AI paused',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: fg,
+              ),
+            ),
+          ),
+          busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : TextButton(
+                  onPressed: aiEnabled ? onTakeOver : onReEnableAi,
+                  style: TextButton.styleFrom(
+                    foregroundColor: fg,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    backgroundColor: Colors.white.withOpacity(0.6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  child: Text(
+                    aiEnabled ? 'Take over' : 'Re-enable AI',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+        ],
+      ),
     );
   }
 }

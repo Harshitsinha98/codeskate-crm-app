@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../providers/notifications_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/leads_provider.dart';
+import '../../services/call_tracker_service.dart';
 
 class HomeShell extends StatefulWidget {
   final Widget child;
@@ -16,6 +19,37 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _currentIndex = 0;
+  bool _callTrackerStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start native call tracking once we're logged in (Android only, no-op
+    // elsewhere). Reads latest auth/leads via provider callbacks at event time.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initCallTracker());
+  }
+
+  void _initCallTracker() {
+    if (_callTrackerStarted) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.user?.activeOrgId == null) return;
+    final leads = context.read<LeadsProvider>();
+    CallTrackerService.instance.configure(
+      getOrgId: () => auth.user?.activeOrgId,
+      getUid: () => auth.user?.uid,
+      getUserName: () => auth.user?.name ?? 'Employee',
+      getRole: () => auth.user?.activeOrgRole,
+      getLeads: () => leads.leads,
+    );
+    CallTrackerService.instance.start();
+    _callTrackerStarted = true;
+  }
+
+  @override
+  void dispose() {
+    CallTrackerService.instance.stop();
+    super.dispose();
+  }
 
   static const _routes = [
     '/dashboard',

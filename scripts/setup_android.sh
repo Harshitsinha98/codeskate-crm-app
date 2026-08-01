@@ -110,20 +110,27 @@ android.useAndroidX=true
 android.enableJetifier=false
 EOF
 
-echo "==> Fixing MainActivity package to $APP_ID ..."
+echo "==> Installing MainActivity + native CallTracker plugin ($APP_ID) ..."
 KOTLIN_BASE="$ANDROID_DIR/app/src/main/kotlin"
-mkdir -p "$KOTLIN_BASE/com/codeskate/crm"
-cat > "$KOTLIN_BASE/com/codeskate/crm/MainActivity.kt" << 'EOF'
-package com.codeskate.crm
-
-import io.flutter.embedding.android.FlutterActivity
-
-class MainActivity: FlutterActivity()
-EOF
-# Remove any other MainActivity.kt generated under a different package path
+PKG_DIR="$KOTLIN_BASE/com/codeskate/crm"
+mkdir -p "$PKG_DIR"
+cp "$ROOT_DIR/scripts/android_templates/MainActivity.kt" "$PKG_DIR/MainActivity.kt"
+cp "$ROOT_DIR/scripts/android_templates/CallTrackerPlugin.kt" "$PKG_DIR/CallTrackerPlugin.kt"
+# Remove any MainActivity.kt generated under a different (default) package path
 find "$KOTLIN_BASE" -name "MainActivity.kt" ! -path "*com/codeskate/crm/*" -delete 2>/dev/null || true
 # Clean up now-empty default package dirs (e.g. com/example/...)
 find "$KOTLIN_BASE" -type d -empty -delete 2>/dev/null || true
+
+echo "==> Adding call-tracking permissions to AndroidManifest.xml ..."
+MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
+if [ -f "$MANIFEST" ] && ! grep -q "android.permission.READ_CALL_LOG" "$MANIFEST"; then
+  # Insert the permissions right after the opening <manifest ...> tag (perl is
+  # reliably available on macOS/Linux).
+  perl -0777 -i -pe 's/(<manifest\b[^>]*>)/$1\n    <uses-permission android:name="android.permission.INTERNET"\/>\n    <uses-permission android:name="android.permission.READ_PHONE_STATE"\/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"\/>/' "$MANIFEST"
+  echo "  Permissions inserted."
+else
+  echo "  Permissions already present (or manifest missing) — skipping."
+fi
 
 echo ""
 echo "=========================================================="

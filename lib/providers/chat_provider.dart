@@ -2,15 +2,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/message_model.dart';
+import '../services/whatsapp_service.dart';
 import 'auth_provider.dart';
 
 class ChatProvider extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   AuthProvider? _auth;
+  WhatsAppService? _wa;
   Map<String, List<MessageModel>> _conversations = {};
   List<Map<String, dynamic>> _conversationList = [];
   bool _isLoading = false;
+  bool _isSending = false;
+  bool _isTogglingAi = false;
   String? _activeLeadId;
 
   StreamSubscription? _messagesSubscription;
@@ -18,11 +22,14 @@ class ChatProvider extends ChangeNotifier {
   Map<String, List<MessageModel>> get conversations => _conversations;
   List<Map<String, dynamic>> get conversationList => _conversationList;
   bool get isLoading => _isLoading;
+  bool get isSending => _isSending;
+  bool get isTogglingAi => _isTogglingAi;
   String? get activeLeadId => _activeLeadId;
 
   List<MessageModel> getMessages(String leadId) => _conversations[leadId] ?? [];
 
   void updateAuth(AuthProvider auth) {
+    _wa ??= WhatsAppService(auth.getIdToken);
     if (_auth?.user?.activeOrgId != auth.user?.activeOrgId) {
       _auth = auth;
       _conversations = {};
@@ -31,6 +38,44 @@ class ChatProvider extends ChangeNotifier {
     } else {
       _auth = auth;
     }
+  }
+
+  /// Send a free-form WhatsApp reply via the backend (24h window).
+  Future<WhatsAppResult> sendMessage(String leadId, String text) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null) {
+      return WhatsAppResult.failure('Not signed in to an organization.');
+    }
+    _isSending = true;
+    notifyListeners();
+    final result = await _wa!.sendMessage(orgId: orgId, leadId: leadId, text: text);
+    _isSending = false;
+    notifyListeners();
+    return result;
+  }
+
+  /// Take over the conversation from AI (human handling).
+  Future<WhatsAppResult> takeOver(String leadId) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null) return WhatsAppResult.failure('Not signed in.');
+    _isTogglingAi = true;
+    notifyListeners();
+    final result = await _wa!.takeOver(orgId: orgId, leadId: leadId);
+    _isTogglingAi = false;
+    notifyListeners();
+    return result;
+  }
+
+  /// Re-enable AI auto-replies for this lead.
+  Future<WhatsAppResult> reEnableAI(String leadId) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null) return WhatsAppResult.failure('Not signed in.');
+    _isTogglingAi = true;
+    notifyListeners();
+    final result = await _wa!.reEnableAI(orgId: orgId, leadId: leadId);
+    _isTogglingAi = false;
+    notifyListeners();
+    return result;
   }
 
   /// Load conversations list (leads with WhatsApp messages)

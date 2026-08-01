@@ -23,10 +23,29 @@ class _OtpScreenState extends State<OtpScreen> {
   bool _canResend = false;
   int _resendCountdown = 30;
 
+  AuthProvider? _auth;
+
   @override
   void initState() {
     super.initState();
     _startResendTimer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _auth ??= context.read<AuthProvider>()..addListener(_onAuthChanged);
+  }
+
+  /// Navigate automatically when Firebase auto-verifies the OTP (Android
+  /// instant verification) or when sign-in otherwise completes.
+  void _onAuthChanged() {
+    if (!mounted) return;
+    final auth = _auth;
+    if (auth == null) return;
+    if (auth.isAuthenticated || auth.autoVerified) {
+      context.go('/dashboard');
+    }
   }
 
   void _startResendTimer() {
@@ -71,6 +90,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
   @override
   void dispose() {
+    _auth?.removeListener(_onAuthChanged);
     _otpController.dispose();
     _focusNode.dispose();
     super.dispose();

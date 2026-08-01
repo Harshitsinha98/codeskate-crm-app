@@ -117,3 +117,47 @@ The app connects to the same Firestore backend as the web CRM:
 - ✅ Android (primary target)
 - 🔄 iOS (planned)
 - ❌ Web (use the existing web CRM instead)
+
+
+## WhatsApp Reply & AI Handoff (Mobile)
+
+The conversation screen now supports the full AI-to-human handoff flow, matching
+the web CRM:
+
+- **AI status bar** at the top of each conversation shows whether AI is
+  auto-replying or a human has taken over (driven by the lead's `aiEnabled`
+  flag).
+- **Take over** pauses AI for that lead; **Re-enable AI** resumes it.
+- A **reply composer** lets agents send free-form WhatsApp messages (valid
+  inside the 24-hour service window). If the window has closed, the backend
+  returns `template_required` and the user is told to use an approved template.
+
+These actions call the same backend as the web app, so you must point the app
+at your backend:
+
+```bash
+flutter run --dart-define=BACKEND_URL=https://your-backend-host
+```
+
+Endpoints used (Firebase ID token sent as Bearer):
+- `POST /api/whatsapp/messages` — `{ orgId, leadId, text, clientMessageId }`
+- `POST /api/v1/chat-sessions/takeover` — `{ orgId, leadId, reason }`
+- `POST /api/v1/chat-sessions/re-enable-ai` — `{ orgId, leadId }`
+
+If `BACKEND_URL` is not set, message history still loads (read-only) but
+sending/takeover are disabled with a clear message.
+
+## Native Call Tracking (Android)
+
+After a call ends, the app reads the latest completed call from the Android
+CallLog, matches it to a lead by the last 10 digits of the phone number, and
+writes a `call` note to `organizations/{orgId}/leads/{leadId}/notes` (idempotent
+by `call_{callLogId}`). This mirrors the reference Capacitor plugin.
+
+- Permissions `READ_PHONE_STATE` and `READ_CALL_LOG` are requested at runtime
+  (added to the manifest automatically by `scripts/setup_android.sh`).
+- Native code lives in `scripts/android_templates/` and is installed into the
+  generated Android project by the setup script.
+- Tracking runs while the app is in the foreground/resumed; a catch-up check on
+  resume (`getLastCall`) handles a call that ended while backgrounded. Android
+  OEM background limits mean this is best-effort, not a persistent service.
