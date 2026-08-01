@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:go_router/go_router.dart';
 
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
@@ -33,14 +34,29 @@ void main() async {
   runApp(const CodeskateApp());
 }
 
-class CodeskateApp extends StatelessWidget {
+class CodeskateApp extends StatefulWidget {
   const CodeskateApp({super.key});
+
+  @override
+  State<CodeskateApp> createState() => _CodeskateAppState();
+}
+
+class _CodeskateAppState extends State<CodeskateApp> {
+  late final AuthProvider _authProvider;
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    _authProvider = AuthProvider();
+    _router = AppRouter.createRouter(_authProvider);
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider.value(value: _authProvider),
         ChangeNotifierProxyProvider<AuthProvider, LeadsProvider>(
           create: (_) => LeadsProvider(),
           update: (_, auth, leads) => leads!..updateAuth(auth),
@@ -66,7 +82,7 @@ class CodeskateApp extends StatelessWidget {
         title: 'Codeskate CRM',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
-        routerConfig: AppRouter.router,
+        routerConfig: _router,
       ),
     );
   }

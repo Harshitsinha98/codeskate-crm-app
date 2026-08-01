@@ -21,15 +21,22 @@ class AppRouter {
   static final _rootNavigatorKey = GlobalKey<NavigatorState>();
   static final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
-  static final GoRouter router = GoRouter(
+  static GoRouter createRouter(AuthProvider authProvider) => GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
+    refreshListenable: authProvider,
     redirect: (context, state) {
-      final auth = context.read<AuthProvider>();
+      final auth = authProvider;
       final isLoggedIn = auth.isAuthenticated;
+      final isLoading = auth.isLoading || auth.state == AuthState.initial;
       final isOnAuth = state.matchedLocation == '/login' ||
           state.matchedLocation == '/otp' ||
           state.matchedLocation == '/splash';
+
+      // While auth state is still being determined (profile loading after
+      // sign-in, or initial app start), don't redirect — let the user stay
+      // on the current page until we know for sure.
+      if (isLoading) return null;
 
       if (!isLoggedIn && !isOnAuth) return '/login';
       if (isLoggedIn && isOnAuth && state.matchedLocation != '/splash') {
