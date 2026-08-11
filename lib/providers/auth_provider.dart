@@ -82,6 +82,8 @@ class AuthProvider extends ChangeNotifier {
       final body = <String, dynamic>{'phone': digits};
       if (channel != null) body['channel'] = channel;
 
+      debugPrint('[OTP] Sending to $_base/api/v1/otp/send body=$body');
+
       final res = await http
           .post(
             Uri.parse('$_base/api/v1/otp/send'),
@@ -91,6 +93,7 @@ class AuthProvider extends ChangeNotifier {
           .timeout(const Duration(seconds: 25));
 
       final data = _safeDecode(res.body);
+      debugPrint('[OTP] Response status=${res.statusCode} body=${res.body}');
 
       if (res.statusCode >= 200 && res.statusCode < 300 && data['ok'] == true) {
         _otpChannel = data['channel']?.toString();
