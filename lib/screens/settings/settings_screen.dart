@@ -54,6 +54,26 @@ class SettingsScreen extends StatelessWidget {
             ).animate().slideY(begin: 0.1, duration: 300.ms, delay: 100.ms).fadeIn(),
             const SizedBox(height: 16),
             _SettingsSection(
+              title: 'Billing & Purchases',
+              children: [
+                _SettingsTile(
+                  icon: Icons.workspace_premium_rounded,
+                  title: 'Billing & Add-ons',
+                  subtitle: (user?.isAdmin ?? false)
+                      ? 'Plan status, buy AI packs, seats & more'
+                      : 'View your plan status',
+                  onTap: () => context.push('/billing'),
+                ),
+                _SettingsTile(
+                  icon: Icons.account_balance_wallet_rounded,
+                  title: 'Voice Wallet',
+                  subtitle: 'Balance & top-up for calling',
+                  onTap: () => context.push('/wallet'),
+                ),
+              ],
+            ).animate().slideY(begin: 0.1, duration: 300.ms, delay: 150.ms).fadeIn(),
+            const SizedBox(height: 16),
+            _SettingsSection(
               title: 'Account',
               children: [
                 _SettingsTile(

@@ -6,12 +6,12 @@ class AppConstants {
   static const String appTagline = 'Smart Lead Management';
 
   /// Base URL of the WhatsApp/CRM backend (same as web CRM's VITE_BACKEND_URL).
-  /// Example: 'https://your-backend.onrender.com'
+  /// Defaults to the production backend so billing/WhatsApp work out of the box.
   /// Can be overridden at build time:
   ///   flutter run --dart-define=BACKEND_URL=https://your-backend.com
   static const String backendBaseUrl = String.fromEnvironment(
     'BACKEND_URL',
-    defaultValue: '',
+    defaultValue: 'https://api.codeskate.com',
   );
 
   static bool get hasBackend => backendBaseUrl.trim().isNotEmpty;
