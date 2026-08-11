@@ -74,7 +74,12 @@ class BillingProvider extends ChangeNotifier {
   void updateAuth(AuthProvider auth) {
     final changed = _auth?.user?.activeOrgId != auth.user?.activeOrgId;
     _auth = auth;
-    if (changed) _startOrgListener();
+    if (changed) {
+      // updateAuth is called by ChangeNotifierProxyProvider DURING the widget
+      // build phase. Calling notifyListeners() synchronously here throws
+      // "notifyListeners() called during build". Defer to the next frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startOrgListener());
+    }
   }
 
   void _startOrgListener() {
