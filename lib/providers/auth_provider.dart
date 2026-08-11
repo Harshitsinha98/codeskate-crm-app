@@ -1,28 +1,48 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+
+import '../core/constants/app_constants.dart';
 import '../models/user_model.dart';
 
 enum AuthState { initial, loading, authenticated, unauthenticated, otpSent, error }
 
+/// Authentication provider using the **backend multichannel OTP** flow
+/// (WhatsApp → SMS → Voice) instead of Firebase Phone Auth directly.
+///
+/// Flow: POST /api/v1/otp/send → user enters code → POST /api/v1/otp/verify
+///       → backend returns Firebase custom token → signInWithCustomToken
+///       → onAuthStateChanged fires → load membership/profile → authenticated.
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   AuthState _state = AuthState.initial;
   UserModel? _user;
-  String? _verificationId;
-  int? _resendToken;
   String _error = '';
   String _lastPhone = '';
+  String? _otpChannel;
   bool _autoVerified = false;
+  DateTime? _rateLimitedUntil;
 
   AuthState get state => _state;
   UserModel? get user => _user;
   String get error => _error;
+  String? get otpChannel => _otpChannel;
   bool get isAuthenticated => _user != null && _state == AuthState.authenticated;
   bool get isLoading => _state == AuthState.loading;
   bool get autoVerified => _autoVerified;
+
+  int get retrySecondsLeft {
+    if (_rateLimitedUntil == null) return 0;
+    final diff = _rateLimitedUntil!.difference(DateTime.now()).inSeconds;
+    return diff > 0 ? diff : 0;
+  }
+  bool get isRateLimited => retrySecondsLeft > 0;
+
+  String get _base => AppConstants.backendBaseUrl.replaceAll(RegExp(r'/+$'), '');
 
   AuthProvider() {
     _init();
@@ -32,27 +52,138 @@ class AuthProvider extends ChangeNotifier {
     _auth.authStateChanges().listen((firebaseUser) async {
       if (firebaseUser == null) {
         _user = null;
-        _state = AuthState.unauthenticated;
-        notifyListeners();
+        if (_state != AuthState.otpSent && _state != AuthState.loading) {
+          _state = AuthState.unauthenticated;
+          notifyListeners();
+        }
         return;
       }
       await _loadUserProfile(firebaseUser);
     });
   }
 
-  /// Normalize an Indian phone number to E.164 (+91XXXXXXXXXX).
-  /// Returns null if it cannot produce a valid 10-digit number.
-  String? _toE164(String raw) {
-    var digits = raw.replaceAll(RegExp(r'\D'), '');
-    // Drop leading country code / trunk prefixes if present.
-    if (digits.length > 10 && digits.startsWith('91')) {
-      digits = digits.substring(digits.length - 10);
-    } else if (digits.length > 10) {
-      digits = digits.substring(digits.length - 10);
+  // ── OTP: Send ──────────────────────────────────────────────────────────────
+
+  Future<bool> sendOtp(String phoneNumber, {String? channel}) async {
+    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 10) {
+      _error = 'Enter a valid 10-digit mobile number.';
+      _state = AuthState.error;
+      notifyListeners();
+      return false;
     }
-    if (digits.length != 10) return null;
-    return '+91$digits';
+
+    _lastPhone = digits;
+    _autoVerified = false;
+    _rateLimitedUntil = null;
+    _state = AuthState.loading;
+    _error = '';
+    _otpChannel = null;
+    notifyListeners();
+
+    try {
+      final body = <String, dynamic>{'phone': digits};
+      if (channel != null) body['channel'] = channel;
+
+      debugPrint('[OTP] Sending to $_base/api/v1/otp/send body=$body');
+
+      final res = await http
+          .post(
+            Uri.parse('$_base/api/v1/otp/send'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      final data = _safeDecode(res.body);
+      debugPrint('[OTP] Response status=${res.statusCode} body=${res.body}');
+
+      if (res.statusCode >= 200 && res.statusCode < 300 && data['ok'] == true) {
+        _otpChannel = data['channel']?.toString();
+        _state = AuthState.otpSent;
+        notifyListeners();
+        return true;
+      }
+
+      if (res.statusCode == 429) {
+        final retryAfter = data['retryAfter'] as int? ?? 60;
+        _error = 'Too many attempts. Retry in ${retryAfter}s.';
+        _rateLimitedUntil = DateTime.now().add(Duration(seconds: retryAfter));
+      } else {
+        _error = data['error']?.toString() ??
+            'Could not send OTP. Please check your internet.';
+      }
+      _state = AuthState.error;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      debugPrint('[OTP] sendOtp error: $e');
+      _error = 'Network error — could not reach the server. Check your internet.';
+      _state = AuthState.error;
+      notifyListeners();
+      return false;
+    }
   }
+
+  // ── OTP: Verify ────────────────────────────────────────────────────────────
+
+  Future<bool> verifyOtp(String otp) async {
+    if (otp.trim().length != 6) {
+      _error = 'Enter a valid 6-digit code.';
+      notifyListeners();
+      return false;
+    }
+
+    _state = AuthState.loading;
+    _error = '';
+    notifyListeners();
+
+    try {
+      debugPrint('[OTP] Verifying code for $_lastPhone');
+
+      final res = await http
+          .post(
+            Uri.parse('$_base/api/v1/otp/verify'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'phone': _lastPhone, 'code': otp.trim()}),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      final data = _safeDecode(res.body);
+      debugPrint('[OTP] Verify response status=${res.statusCode} body=${res.body}');
+
+      if (res.statusCode >= 200 && res.statusCode < 300 && data['ok'] == true) {
+        final token = data['token']?.toString();
+        if (token == null || token.isEmpty) {
+          _error = 'Server error — no auth token received.';
+          _state = AuthState.otpSent;
+          notifyListeners();
+          return false;
+        }
+
+        await _auth.signInWithCustomToken(token);
+        return true;
+      }
+
+      _error = data['error']?.toString() ?? 'Invalid OTP. Please try again.';
+      _state = AuthState.otpSent;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      debugPrint('[OTP] verifyOtp error: $e');
+      _error = 'Verification failed. Check your internet and retry.';
+      _state = AuthState.otpSent;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // ── OTP: Resend ────────────────────────────────────────────────────────────
+
+  Future<bool> resendOtp(String phoneNumber, {String? channel}) =>
+      sendOtp(phoneNumber, channel: channel);
+
+  // ── Profile ────────────────────────────────────────────────────────────────
 
   Future<void> _loadUserProfile(User firebaseUser, {int attempt = 0}) async {
     try {
@@ -123,7 +254,6 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error loading user profile (attempt $attempt): $e');
-      // Transient Firestore errors (offline, cold start) — retry a couple times.
       if (attempt < 2) {
         await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
         return _loadUserProfile(firebaseUser, attempt: attempt + 1);
@@ -134,125 +264,19 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Send OTP to phone number. [phoneNumber] is the raw 10-digit input.
-  Future<bool> sendOtp(String phoneNumber) async {
-    final e164 = _toE164(phoneNumber);
-    if (e164 == null) {
-      _error = 'Enter a valid 10-digit mobile number.';
-      _state = AuthState.error;
-      notifyListeners();
-      return false;
-    }
-
-    _lastPhone = e164;
-    _autoVerified = false;
-    _state = AuthState.loading;
-    _error = '';
-    notifyListeners();
-
-    try {
-      await _auth.verifyPhoneNumber(
-        phoneNumber: e164,
-        timeout: const Duration(seconds: 60),
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Android instant/auto verification — sign in directly.
-          try {
-            await _auth.signInWithCredential(credential);
-            _autoVerified = true;
-            notifyListeners();
-          } catch (e) {
-            debugPrint('Auto verification sign-in failed: $e');
-          }
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          _error = _mapFirebaseError(e.code);
-          _state = AuthState.error;
-          notifyListeners();
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          _verificationId = verificationId;
-          _resendToken = resendToken;
-          _state = AuthState.otpSent;
-          notifyListeners();
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          _verificationId = verificationId;
-        },
-        forceResendingToken: _resendToken,
-      );
-      return true;
-    } catch (e) {
-      _error = 'Failed to send OTP. Please try again.';
-      _state = AuthState.error;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Verify the manually entered OTP code.
-  Future<bool> verifyOtp(String otp) async {
-    // If auto-verification already signed us in, treat as success.
-    if (_auth.currentUser != null && _state == AuthState.authenticated) {
-      return true;
-    }
-    // Still loading profile after auto-verify? Wait briefly.
-    if (_auth.currentUser != null && _state == AuthState.loading) {
-      // Already signed in, profile is loading — just wait for it.
-      for (int i = 0; i < 10; i++) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (_state == AuthState.authenticated) return true;
-      }
-      // Timed out waiting for profile but user IS signed in.
-      return true;
-    }
-
-    if (_verificationId == null) {
-      _error = 'Session expired. Please request a new OTP.';
-      _state = AuthState.error;
-      notifyListeners();
-      return false;
-    }
-
-    _state = AuthState.loading;
-    _error = '';
-    notifyListeners();
-
-    try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: otp.trim(),
-      );
-      await _auth.signInWithCredential(credential);
-      return true;
-    } on FirebaseAuthException catch (e) {
-      // If user is already signed in (auto-verify happened concurrently), 
-      // treat session-expired/invalid-code gracefully.
-      if (_auth.currentUser != null) return true;
-      _error = _mapFirebaseError(e.code);
-      _state = AuthState.otpSent;
-      notifyListeners();
-      return false;
-    } catch (e) {
-      if (_auth.currentUser != null) return true;
-      _error = 'OTP verification failed. Please try again.';
-      _state = AuthState.otpSent;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<bool> resendOtp(String phoneNumber) => sendOtp(phoneNumber);
+  // ── Sign out ───────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
     await _auth.signOut();
     _user = null;
-    _verificationId = null;
-    _resendToken = null;
     _autoVerified = false;
     _state = AuthState.unauthenticated;
     _error = '';
+    _otpChannel = null;
     notifyListeners();
   }
+
+  // ── Org switch ─────────────────────────────────────────────────────────────
 
   Future<bool> switchOrg(String orgId) async {
     if (_user == null) return false;
@@ -280,7 +304,8 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Firebase ID token for authenticated backend calls (WhatsApp send, etc.).
+  // ── Token for authenticated REST calls ─────────────────────────────────────
+
   Future<String?> getIdToken() async {
     try {
       return await _auth.currentUser?.getIdToken();
@@ -294,23 +319,12 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  String _mapFirebaseError(String code) {
-    switch (code) {
-      case 'invalid-phone-number':
-        return 'Invalid phone number. Enter a valid 10-digit number.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again after some time.';
-      case 'invalid-verification-code':
-        return 'Incorrect OTP. Please check and try again.';
-      case 'missing-client-identifier':
-        return 'App verification failed. Ensure SHA-1 & SHA-256 are added in Firebase and Play Integrity is enabled.';
-      case 'session-expired':
-      case 'code-expired':
-        return 'OTP expired. Please request a new one.';
-      case 'quota-exceeded':
-        return 'OTP limit reached. Please try again tomorrow.';
-      default:
-        return 'Something went wrong ($code). Please try again.';
-    }
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  Map<String, dynamic> _safeDecode(String body) {
+    try {
+      if (body.isNotEmpty) return jsonDecode(body) as Map<String, dynamic>;
+    } catch (_) {}
+    return {};
   }
 }
