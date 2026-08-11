@@ -198,30 +198,39 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 12),
 
-                  // Error message
+                  // Error message + Retry countdown
                   Consumer<AuthProvider>(
                     builder: (context, auth, _) {
                       if (auth.error.isEmpty) return const SizedBox.shrink();
-                      return Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.errorLight,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline, color: AppColors.error, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                auth.error,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: AppColors.error,
-                                    ),
-                              ),
+                      return Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.errorLight,
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                          ],
-                        ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    auth.error,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: AppColors.error,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (auth.isRateLimited)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: _RetryCountdown(auth: auth, onRetry: _sendOtp),
+                            ),
+                        ],
                       );
                     },
                   ),
@@ -278,6 +287,96 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+
+
+/// Countdown timer that auto-retries OTP send when rate limit expires.
+class _RetryCountdown extends StatefulWidget {
+  final AuthProvider auth;
+  final VoidCallback onRetry;
+
+  const _RetryCountdown({required this.auth, required this.onRetry});
+
+  @override
+  State<_RetryCountdown> createState() => _RetryCountdownState();
+}
+
+class _RetryCountdownState extends State<_RetryCountdown> {
+  late int _seconds;
+  bool _done = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _seconds = widget.auth.retrySecondsLeft;
+    _tick();
+  }
+
+  void _tick() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      final left = widget.auth.retrySecondsLeft;
+      setState(() => _seconds = left);
+      if (left <= 0) {
+        setState(() => _done = true);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done) {
+      return SizedBox(
+        width: double.infinity,
+        height: 48,
+        child: ElevatedButton.icon(
+          onPressed: widget.onRetry,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Retry now'),
+        ),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              value: 1 - (_seconds / 60),
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Retry in ${_seconds}s',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.orange.shade800,
+            ),
+          ),
+        ],
       ),
     );
   }

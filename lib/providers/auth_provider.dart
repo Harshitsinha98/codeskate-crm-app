@@ -28,6 +28,7 @@ class AuthProvider extends ChangeNotifier {
   String _lastPhone = '';
   String? _otpChannel; // whatsapp_meta | sms | voice
   bool _autoVerified = false;
+  DateTime? _rateLimitedUntil;
 
   AuthState get state => _state;
   UserModel? get user => _user;
@@ -36,6 +37,14 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _user != null && _state == AuthState.authenticated;
   bool get isLoading => _state == AuthState.loading;
   bool get autoVerified => _autoVerified;
+
+  /// Seconds remaining before retry is allowed (0 = can retry now).
+  int get retrySecondsLeft {
+    if (_rateLimitedUntil == null) return 0;
+    final diff = _rateLimitedUntil!.difference(DateTime.now()).inSeconds;
+    return diff > 0 ? diff : 0;
+  }
+  bool get isRateLimited => retrySecondsLeft > 0;
 
   String get _base => AppConstants.backendBaseUrl.replaceAll(RegExp(r'/+$'), '');
 
@@ -73,6 +82,7 @@ class AuthProvider extends ChangeNotifier {
 
     _lastPhone = digits;
     _autoVerified = false;
+    _rateLimitedUntil = null;
     _state = AuthState.loading;
     _error = '';
     _otpChannel = null;
@@ -104,7 +114,9 @@ class AuthProvider extends ChangeNotifier {
 
       // Rate limited
       if (res.statusCode == 429) {
-        _error = 'Too many attempts. Please wait and try again.';
+        final retryAfter = data['retryAfter'] as int? ?? 60;
+        _error = 'Too many attempts. Retry in ${retryAfter}s.';
+        _rateLimitedUntil = DateTime.now().add(Duration(seconds: retryAfter));
       } else {
         _error = data['error']?.toString() ??
             'Could not send OTP. Please check your internet.';
