@@ -37,20 +37,14 @@ class _OtpScreenState extends State<OtpScreen> {
     _auth ??= context.read<AuthProvider>()..addListener(_onAuthChanged);
   }
 
-  /// Navigate automatically when Firebase auto-verifies the OTP (Android
-  /// instant verification) or when sign-in otherwise completes.
+  /// Navigate automatically when auth state changes (profile loaded).
   void _onAuthChanged() {
     if (!mounted) return;
     final auth = _auth;
     if (auth == null) return;
-    // Navigate as soon as user is authenticated OR when auto-verify fired
-    // (even if profile is still loading — the router redirect handles it).
-    if (auth.isAuthenticated || auth.autoVerified || auth.state == AuthState.loading) {
-      // Only navigate once we're truly authenticated (profile loaded).
-      if (auth.isAuthenticated) {
-        context.go('/dashboard');
-      }
-    }
+    // GoRouter redirect handles navigation once isAuthenticated is true.
+    // No manual context.go needed — the router's refreshListenable
+    // re-evaluates redirect whenever auth state changes.
   }
 
   void _startResendTimer() {
@@ -76,13 +70,11 @@ class _OtpScreenState extends State<OtpScreen> {
 
     setState(() => _isVerifying = true);
     final auth = context.read<AuthProvider>();
-    final success = await auth.verifyOtp(otp);
+    await auth.verifyOtp(otp);
 
     if (mounted) {
       setState(() => _isVerifying = false);
-      if (success) {
-        context.go('/dashboard');
-      }
+      // Navigation handled by GoRouter redirect when auth becomes authenticated.
     }
   }
 
