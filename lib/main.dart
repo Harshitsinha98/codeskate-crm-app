@@ -19,9 +19,13 @@ import 'services/call_tracker_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Guard against "duplicate-app" — Firebase may already be initialized
+  // (e.g. by a hot restart, or the native google-services plugin auto-init).
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 
   // Set system UI overlay style for warm brand feel
   SystemChrome.setSystemUIOverlayStyle(
