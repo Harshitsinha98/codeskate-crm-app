@@ -161,3 +161,50 @@ by `call_{callLogId}`). This mirrors the reference Capacitor plugin.
 - Tracking runs while the app is in the foreground/resumed; a catch-up check on
   resume (`getLastCall`) handles a call that ended while backgrounded. Android
   OEM background limits mean this is best-effort, not a persistent service.
+
+
+## In-App Purchases — Add-ons & Voice Wallet (Razorpay)
+
+Admins can buy add-on packs and top up the Voice Wallet directly from the app.
+**Subscriptions/plan changes stay on the web dashboard** — the app links out to
+it — but everything else (AI reply packs, extra seats/leads, catalogue, wallet
+top-ups) is purchasable in-app via Razorpay, using the same backend as the web
+CRM. No backend changes are required.
+
+### Where
+- **Settings → Billing & Add-ons** (`/billing`): live plan status, AI-reply
+  usage, and the list of purchasable add-on packs (server-driven via
+  `GET /api/billing/quota-status`). Non-admins see a read-only plan view.
+- **Settings → Voice Wallet** (`/wallet`): balance, top-up (₹100 min, presets
+  ₹500/1000/2000/5000 or custom), and transaction history. Gated to Growth+
+  plans, matching the web app.
+
+### Purchase flow (mirrors the web CRM)
+1. `POST /api/billing/razorpay/addon/order` `{ orgId, addOnId, quantity }`
+   (or `POST /api/wallet/order` `{ orgId, amountInr }`) → `{ orderId, amount,
+   currency, keyId }`.
+2. Open Razorpay Checkout (native `razorpay_flutter`) with those values.
+3. On success → `POST /api/billing/razorpay/addon/verify`
+   (or `POST /api/wallet/verify`) with
+   `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }`.
+4. The app re-fetches quota/balance; the live org listener reflects new limits.
+
+### Setup
+- `razorpay_flutter` is already in `pubspec.yaml`. Run `flutter pub get`.
+- Android `minSdk` is 23 (≥ 19 required) via `scripts/setup_android.sh`.
+- The backend must have `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` configured
+  (it already is for the web CRM). The publishable key is returned per-order, so
+  no key is hard-coded in the app.
+- If you enable code shrinking for release (`minifyEnabled true`), add the
+  Razorpay ProGuard rules from https://pub.dev/packages/razorpay_flutter.
+
+Backend base URL defaults to `https://api.codeskate.com`; override with
+`--dart-define=BACKEND_URL=https://your-backend-host`.
+
+### Code map
+- `lib/services/billing_service.dart` — REST client (mirrors web `billingApi.js`)
+- `lib/services/razorpay_checkout.dart` — awaitable wrapper over `razorpay_flutter`
+- `lib/providers/billing_provider.dart` — org listener + purchase orchestration
+- `lib/models/billing_models.dart` — OrgBilling / AddOn / QuotaStatus / Wallet*
+- `lib/screens/billing/billing_screen.dart` — plan status + add-on store
+- `lib/screens/billing/wallet_screen.dart` — wallet balance + top-up

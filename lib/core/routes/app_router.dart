@@ -15,6 +15,8 @@ import '../../screens/chat/employee_chat_screen.dart';
 import '../../screens/notifications/notifications_screen.dart';
 import '../../screens/followups/followups_screen.dart';
 import '../../screens/settings/settings_screen.dart';
+import '../../screens/billing/billing_screen.dart';
+import '../../screens/billing/wallet_screen.dart';
 import '../../screens/splash_screen.dart';
 
 class AppRouter {
@@ -136,6 +138,14 @@ class AppRouter {
           final leadId = state.pathParameters['leadId']!;
           return ConversationScreen(leadId: leadId);
         },
+      ),
+      GoRoute(
+        path: '/billing',
+        builder: (context, state) => const BillingScreen(),
+      ),
+      GoRoute(
+        path: '/wallet',
+        builder: (context, state) => const WalletScreen(),
       ),
     ],
   );
