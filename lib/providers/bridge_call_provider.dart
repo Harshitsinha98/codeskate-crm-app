@@ -33,6 +33,11 @@ class BridgeCallProvider extends ChangeNotifier {
   Timer? _pollTimer;
   Timer? _elapsedTimer;
 
+  // Availability (whether the Bridge option should be shown at all).
+  bool? _bridgeAvailable; // null = unknown/not-checked
+  bool get bridgeAvailable => _bridgeAvailable == true;
+  bool get availabilityChecked => _bridgeAvailable != null;
+
   BridgePhase get phase => _phase;
   String get error => _error;
   String? get errorCode => _errorCode;
@@ -49,6 +54,18 @@ class BridgeCallProvider extends ChangeNotifier {
   }
 
   String? get _orgId => _auth?.user?.activeOrgId;
+
+  /// Ask the backend whether bridge calling is available (plan + number +
+  /// wallet). Used to show/hide the Bridge option on the call button.
+  Future<bool> checkAvailability({bool force = false}) async {
+    if (_bridgeAvailable != null && !force) return _bridgeAvailable!;
+    final orgId = _orgId;
+    if (orgId == null) return false;
+    final ok = await _service.isAvailable(orgId);
+    _bridgeAvailable = ok;
+    notifyListeners();
+    return ok;
+  }
 
   /// Start a bridge call for [lead].
   /// Returns true if the bridge flow started; false if the caller should fall

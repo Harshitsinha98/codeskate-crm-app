@@ -192,6 +192,24 @@ class BridgeCallService {
     }
   }
 
+  /// Whether bridge calling is available for [orgId] (plan + number + wallet).
+  /// Returns true only if the backend confirms the call would succeed.
+  Future<bool> isAvailable(String orgId) async {
+    try {
+      final res = await http
+          .get(
+            Uri.parse(
+                '$_base/api/v1/bridge-call/availability?orgId=${Uri.encodeComponent(orgId)}'),
+            headers: await _headers(),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return _decode(res)['available'] == true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   /// Poll a call's live status.
   Future<BridgeCallStatus?> poll(String callId) async {
     try {
