@@ -17,6 +17,7 @@ import '../../screens/followups/followups_screen.dart';
 import '../../screens/settings/settings_screen.dart';
 import '../../screens/billing/billing_screen.dart';
 import '../../screens/billing/wallet_screen.dart';
+import '../../screens/calls/call_history_screen.dart';
 import '../../screens/splash_screen.dart';
 
 class AppRouter {
@@ -146,6 +147,10 @@ class AppRouter {
       GoRoute(
         path: '/wallet',
         builder: (context, state) => const WalletScreen(),
+      ),
+      GoRoute(
+        path: '/call-history',
+        builder: (context, state) => const CallHistoryScreen(),
       ),
     ],
   );

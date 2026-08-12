@@ -15,6 +15,7 @@ import 'providers/team_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/billing_provider.dart';
+import 'providers/bridge_call_provider.dart';
 import 'services/call_tracker_service.dart';
 
 void main() {
@@ -149,6 +150,10 @@ class _CodeskateAppState extends State<CodeskateApp> {
         ChangeNotifierProxyProvider<AuthProvider, BillingProvider>(
           create: (_) => BillingProvider(),
           update: (_, auth, billing) => billing!..updateAuth(auth),
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, BridgeCallProvider>(
+          create: (_) => BridgeCallProvider(),
+          update: (_, auth, bridge) => bridge!..updateAuth(auth),
         ),
       ],
       child: _CallTrackerBinder(

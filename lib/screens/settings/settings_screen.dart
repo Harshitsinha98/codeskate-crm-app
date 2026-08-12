@@ -70,6 +70,13 @@ class SettingsScreen extends StatelessWidget {
                   subtitle: 'Balance & top-up for calling',
                   onTap: () => context.push('/wallet'),
                 ),
+                if (user?.isAdmin ?? false)
+                  _SettingsTile(
+                    icon: Icons.call_rounded,
+                    title: 'Call History & Recordings',
+                    subtitle: 'Bridge calls, durations & recordings',
+                    onTap: () => context.push('/call-history'),
+                  ),
               ],
             ).animate().slideY(begin: 0.1, duration: 300.ms, delay: 150.ms).fadeIn(),
             const SizedBox(height: 16),

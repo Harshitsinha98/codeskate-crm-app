@@ -9,6 +9,8 @@ import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/leads_provider.dart';
 import '../../models/lead_model.dart';
+import '../../services/call_tracker_service.dart';
+import 'bridge_call_sheet.dart';
 
 class LeadDetailScreen extends StatelessWidget {
   final String leadId;
@@ -166,6 +168,28 @@ class LeadDetailScreen extends StatelessWidget {
             ),
           ),
 
+          // Bridge Call (masked, recorded) — primary CTA
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => showBridgeCallSheet(context, lead),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.shield_rounded, size: 18),
+                  label: const Text('Bridge Call — number masked & recorded'),
+                ),
+              ).animate().slideY(begin: 0.1, duration: 300.ms).fadeIn(delay: 150.ms),
+            ),
+          ),
+
           // Lead Info Card
           SliverToBoxAdapter(
             child: Padding(
@@ -297,6 +321,11 @@ class LeadDetailScreen extends StatelessWidget {
     final uri = Uri.parse('tel:$phone');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
+      // When the user returns from the dialer, re-check the CallLog so a
+      // direct call gets logged against this lead automatically. (The app
+      // lifecycle observer also runs catchUp on resume; this is a belt-and-
+      // braces trigger for reliability.)
+      CallTrackerService.instance.catchUp();
     }
   }
 
