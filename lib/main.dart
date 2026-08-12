@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -16,28 +17,83 @@ import 'providers/chat_provider.dart';
 import 'providers/billing_provider.dart';
 import 'services/call_tracker_service.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  // Surface any build/runtime error ON SCREEN (red text) instead of a blank
+  // white screen, so problems are diagnosable on-device without a debugger.
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: Colors.white,
+      child: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          alignment: Alignment.topLeft,
+          child: SingleChildScrollView(
+            child: Text(
+              'APP ERROR:\n\n${details.exceptionAsString()}\n\n${details.stack}',
+              style: const TextStyle(color: Colors.red, fontSize: 12, height: 1.4),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
 
-  // Guard against "duplicate-app" — Firebase may already be initialized
-  // (e.g. by a hot restart, or the native google-services plugin auto-init).
-  if (Firebase.apps.isEmpty) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    // Firebase init (guard against duplicate-app).
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      }
+    } catch (e, st) {
+      runApp(_StartupError(message: 'Firebase init failed:\n\n$e\n\n$st'));
+      return;
+    }
+
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+
+    runApp(const CodeskateApp());
+  }, (error, stack) {
+    // Any uncaught async error → show it on screen.
+    runApp(_StartupError(message: 'Uncaught error:\n\n$error\n\n$stack'));
+  });
+}
+
+/// Full-screen readable error display (used when startup fails).
+class _StartupError extends StatelessWidget {
+  final String message;
+  const _StartupError({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: SingleChildScrollView(
+              child: Text(
+                message,
+                style: const TextStyle(color: Colors.red, fontSize: 13, height: 1.4),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
-
-  // Set system UI overlay style for warm brand feel
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
-
-  runApp(const CodeskateApp());
 }
 
 class CodeskateApp extends StatefulWidget {
@@ -101,15 +157,6 @@ class _CodeskateAppState extends State<CodeskateApp> {
 }
 
 /// Wires the native Android call tracker to the app lifecycle and auth state.
-///
-/// - When a user is authenticated (org resolved), it configures the
-///   [CallTrackerService] with live getters and starts listening.
-/// - When the user signs out, it stops the tracker.
-/// - On app resume, it runs a catch-up check so a call that ended while the
-///   app was backgrounded is still logged to the matching lead.
-///
-/// The service itself is a no-op on non-Android platforms, so this is safe to
-/// mount unconditionally.
 class _CallTrackerBinder extends StatefulWidget {
   final Widget child;
 
@@ -137,8 +184,6 @@ class _CallTrackerBinderState extends State<_CallTrackerBinder>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // A call may have started/ended while the app was in the background.
-    // Re-check the CallLog when we come back to the foreground.
     if (state == AppLifecycleState.resumed) {
       CallTrackerService.instance.catchUp();
     }
@@ -160,7 +205,6 @@ class _CallTrackerBinderState extends State<_CallTrackerBinder>
         );
         _configured = true;
       }
-      // start() is idempotent (returns early if already running).
       CallTrackerService.instance.start();
     } else if (_configured || CallTrackerService.instance.isRunning) {
       CallTrackerService.instance.stop();
@@ -170,7 +214,6 @@ class _CallTrackerBinderState extends State<_CallTrackerBinder>
 
   @override
   Widget build(BuildContext context) {
-    // Rebuild whenever auth state changes so we react to login/logout.
     context.watch<AuthProvider>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncTracker();
