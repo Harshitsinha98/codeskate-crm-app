@@ -89,6 +89,12 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+            // R8/minify is disabled: the smart_auth plugin (pulled in transitively
+            // by pinput) references Play Services credential classes that were
+            // removed from newer SDKs, which breaks R8 with "Missing class"
+            // errors. This app doesn't need code shrinking, so keep it off.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
