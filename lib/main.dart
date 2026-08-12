@@ -41,13 +41,20 @@ void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Firebase init (guard against duplicate-app).
+    // Firebase init. On Android the native google-services plugin auto-creates
+    // the [DEFAULT] app via a ContentProvider BEFORE Dart runs, so calling
+    // initializeApp() again throws [core/duplicate-app]. We swallow ONLY that
+    // error (the app is already initialized and usable) and surface any other.
     try {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } on FirebaseException catch (e, st) {
+      if (e.code != 'duplicate-app') {
+        runApp(_StartupError(message: 'Firebase init failed:\n\n$e\n\n$st'));
+        return;
       }
+      // duplicate-app → already initialized natively, safe to continue.
     } catch (e, st) {
       runApp(_StartupError(message: 'Firebase init failed:\n\n$e\n\n$st'));
       return;
