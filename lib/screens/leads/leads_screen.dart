@@ -8,6 +8,7 @@ import '../../core/constants/app_constants.dart';
 import '../../providers/leads_provider.dart';
 import '../../models/lead_model.dart';
 import '../widgets/lead_mini_card.dart';
+import '../widgets/ui_kit.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -51,138 +52,156 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final filteredLeads = _filterLeads(leads.leads);
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Leads'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list_rounded),
-            onPressed: () {
-              // TODO: Advanced filter modal
-            },
+        backgroundColor: AppColors.background,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 16,
+        title: const Text(
+          'Leads',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+            letterSpacing: -0.5,
           ),
-        ],
+        ),
       ),
       body: Column(
         children: [
-          // Search Bar
+          // ── Search (filled, flat) ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: Container(
+              height: 46,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(color: AppColors.border),
               ),
               child: TextField(
                 controller: _searchController,
                 onChanged: (v) => setState(() => _searchQuery = v),
+                style: const TextStyle(fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: 'Search leads by name or phone...',
-                  prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textTertiary),
+                  isDense: true,
+                  hintText: 'Search name, phone or email',
+                  hintStyle: const TextStyle(
+                      fontSize: 13.5, color: AppColors.textTertiary),
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      size: 20, color: AppColors.textTertiary),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear_rounded, size: 18),
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          color: AppColors.textTertiary,
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _searchQuery = '');
                           },
                         )
                       : null,
+                  filled: false,
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
-                  filled: false,
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 13, horizontal: 4),
                 ),
               ),
             ),
-          ).animate().slideY(begin: -0.1, duration: 300.ms).fadeIn(),
+          ).animate().fadeIn(duration: 250.ms),
 
-          // Status Filter Chips
+          // ── Status pills ──
           SizedBox(
-            height: 42,
-            child: ListView.builder(
+            height: 34,
+            child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: statuses.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
                 final status = statuses[index];
-                final isSelected = _selectedStatus == status;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    selected: isSelected,
-                    label: Text(
-                      status,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                final selected = _selectedStatus == status;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedStatus = status),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.primary : AppColors.surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: selected ? AppColors.primary : AppColors.border,
                       ),
                     ),
-                    onSelected: (_) => setState(() => _selectedStatus = status),
-                    backgroundColor: Colors.white,
-                    selectedColor: AppColors.primary.withOpacity(0.12),
-                    side: BorderSide(
-                      color: isSelected ? AppColors.primary.withOpacity(0.3) : AppColors.divider,
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color:
+                            selected ? Colors.white : AppColors.textSecondary,
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
                   ),
                 );
               },
             ),
-          ).animate().fadeIn(delay: 100.ms),
+          ).animate().fadeIn(delay: 80.ms),
 
-          const SizedBox(height: 8),
-
-          // Count
+          // ── Count row ──
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
             child: Row(
               children: [
-                Text(
-                  '${filteredLeads.length} leads',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w500,
+                StatLabel('${filteredLeads.length} '
+                    '${filteredLeads.length == 1 ? 'lead' : 'leads'}'),
+                const Spacer(),
+                if (_selectedStatus != 'All' || _searchQuery.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      _searchController.clear();
+                      setState(() {
+                        _searchQuery = '';
+                        _selectedStatus = 'All';
+                      });
+                    },
+                    child: const Text(
+                      'Clear filters',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
                       ),
-                ),
+                    ),
+                  ),
               ],
             ),
           ),
 
-          const SizedBox(height: 8),
-
-          // Leads List
+          // ── List ──
           Expanded(
             child: leads.isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary))
                 : filteredLeads.isEmpty
                     ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.search_off_rounded, size: 64, color: AppColors.textTertiary.withOpacity(0.4)),
-                            const SizedBox(height: 16),
-                            Text(
-                              _searchQuery.isNotEmpty
-                                  ? 'No leads match your search'
-                                  : 'No leads in "${_selectedStatus}" status',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: AppColors.textTertiary,
-                                  ),
-                            ),
-                          ],
+                        child: EmptyState(
+                          icon: _searchQuery.isNotEmpty
+                              ? Icons.search_off_rounded
+                              : Icons.inbox_rounded,
+                          title: _searchQuery.isNotEmpty
+                              ? 'No matching leads'
+                              : 'Nothing in "$_selectedStatus"',
+                          hint: _searchQuery.isNotEmpty
+                              ? 'Try a different name or number.'
+                              : 'Leads will appear here as they come in.',
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                         itemCount: filteredLeads.length,
                         itemBuilder: (context, index) {
                           final lead = filteredLeads[index];

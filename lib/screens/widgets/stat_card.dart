@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_colors.dart';
 
+import '../../core/theme/app_colors.dart';
+import 'ui_kit.dart';
+
+/// Modern SaaS metric tile: uppercase label on top, large value, and a soft
+/// icon chip. Flat surface with a hairline border (no coloured glow).
 class StatCard extends StatelessWidget {
   final String title;
   final String value;
@@ -21,65 +25,58 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppCard(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(color: color.withOpacity(0.1)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, size: 18, color: color),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(9),
                 ),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                  ),
-            ),
-            if (subtitle != null)
-              Text(
-                subtitle!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.error,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
+                child: Icon(icon, size: 16, color: color),
               ),
+              const Spacer(),
+              if (onTap != null)
+                Icon(Icons.arrow_outward_rounded,
+                    size: 14, color: AppColors.textTertiary.withOpacity(0.7)),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 26,
+              height: 1.05,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.8,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 5),
+          StatLabel(title),
+          if (subtitle != null) ...[
+            const SizedBox(height: 5),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: AppColors.error,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
-        ),
+        ],
       ),
     );
   }

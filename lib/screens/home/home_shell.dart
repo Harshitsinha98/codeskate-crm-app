@@ -79,54 +79,58 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: widget.child,
       bottomNavigationBar: Consumer<NotificationsProvider>(
         builder: (context, notifs, _) {
           return Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(
+                top: BorderSide(color: AppColors.divider, width: 1),
+              ),
             ),
             child: SafeArea(
+              top: false,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _NavItem(
-                      icon: Icons.dashboard_rounded,
+                      icon: Icons.space_dashboard_outlined,
+                      activeIcon: Icons.space_dashboard_rounded,
                       label: 'Home',
                       isSelected: _currentIndex == 0,
                       onTap: () => _onTabTapped(0),
                     ),
                     _NavItem(
-                      icon: Icons.people_alt_rounded,
+                      icon: Icons.people_alt_outlined,
+                      activeIcon: Icons.people_alt_rounded,
                       label: 'Leads',
                       isSelected: _currentIndex == 1,
                       onTap: () => _onTabTapped(1),
                     ),
                     _NavItem(
-                      icon: Icons.chat_rounded,
-                      label: 'WhatsApp',
+                      icon: Icons.chat_bubble_outline_rounded,
+                      activeIcon: Icons.chat_bubble_rounded,
+                      label: 'Chats',
                       isSelected: _currentIndex == 2,
                       onTap: () => _onTabTapped(2),
-                      badge: null,
                     ),
                     _NavItem(
-                      icon: Icons.event_note_rounded,
-                      label: 'Follow-ups',
+                      icon: Icons.event_note_outlined,
+                      activeIcon: Icons.event_note_rounded,
+                      label: 'Tasks',
                       isSelected: _currentIndex == 3,
                       onTap: () => _onTabTapped(3),
-                      badge: notifs.unreadCount > 0 ? notifs.unreadCount.toString() : null,
+                      badge: notifs.unreadCount > 0
+                          ? notifs.unreadCount.toString()
+                          : null,
                     ),
                     _NavItem(
-                      icon: Icons.settings_rounded,
+                      icon: Icons.settings_outlined,
+                      activeIcon: Icons.settings_rounded,
                       label: 'Settings',
                       isSelected: _currentIndex == 4,
                       onTap: () => _onTabTapped(4),
@@ -144,6 +148,7 @@ class _HomeShellState extends State<HomeShell> {
 
 class _NavItem extends StatelessWidget {
   final IconData icon;
+  final IconData activeIcon;
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
@@ -151,6 +156,7 @@ class _NavItem extends StatelessWidget {
 
   const _NavItem({
     required this.icon,
+    required this.activeIcon,
     required this.label,
     required this.isSelected,
     required this.onTap,
@@ -159,57 +165,67 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-        ),
+    final color = isSelected ? AppColors.primary : AppColors.textTertiary;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(
-                  icon,
-                  size: 24,
-                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                ),
-                if (badge != null)
-                  Positioned(
-                    right: -8,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: AppColors.error,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        badge!,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
+            // Soft pill behind the active icon.
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary.withOpacity(0.10)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(isSelected ? activeIcon : icon, size: 21, color: color),
+                  if (badge != null)
+                    Positioned(
+                      right: -7,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 15),
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          borderRadius: BorderRadius.circular(999),
+                          border:
+                              Border.all(color: AppColors.surface, width: 1.2),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          badge!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                fontSize: 10.5,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: color,
               ),
+              maxLines: 1,
             ),
           ],
         ),
