@@ -104,6 +104,38 @@ class WhatsAppService {
     }
   }
 
+  /// Send an approved WhatsApp template (used when the 24h window is closed).
+  /// [templateId] = Firestore doc id from whatsappTemplates collection.
+  /// [parameters] = list of substitution values for {{1}}, {{2}}, etc.
+  Future<WhatsAppResult> sendTemplate({
+    required String orgId,
+    required String leadId,
+    required String templateId,
+    List<String> parameters = const [],
+  }) async {
+    if (!AppConstants.hasBackend) {
+      return WhatsAppResult.failure('Backend URL not configured.', 'no_backend');
+    }
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base/api/whatsapp/templates/send'),
+            headers: await _headers(),
+            body: jsonEncode({
+              'orgId': orgId,
+              'leadId': leadId,
+              'templateId': templateId,
+              'parameters': parameters,
+              'clientMessageId': _uuid.v4(),
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      return _parse(res);
+    } catch (e) {
+      return WhatsAppResult.failure('Network error: $e');
+    }
+  }
+
   /// Re-enable AI auto-replies for this lead.
   Future<WhatsAppResult> reEnableAI({
     required String orgId,

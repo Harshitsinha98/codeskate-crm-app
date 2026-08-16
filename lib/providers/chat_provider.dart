@@ -12,15 +12,18 @@ class ChatProvider extends ChangeNotifier {
   WhatsAppService? _wa;
   Map<String, List<MessageModel>> _conversations = {};
   List<Map<String, dynamic>> _conversationList = [];
+  List<Map<String, dynamic>> _templates = [];
   bool _isLoading = false;
   bool _isSending = false;
   bool _isTogglingAi = false;
   String? _activeLeadId;
 
   StreamSubscription? _messagesSubscription;
+  StreamSubscription? _templatesSub;
 
   Map<String, List<MessageModel>> get conversations => _conversations;
   List<Map<String, dynamic>> get conversationList => _conversationList;
+  List<Map<String, dynamic>> get templates => _templates;
   bool get isLoading => _isLoading;
   bool get isSending => _isSending;
   bool get isTogglingAi => _isTogglingAi;
@@ -34,10 +37,35 @@ class ChatProvider extends ChangeNotifier {
       _auth = auth;
       _conversations = {};
       _conversationList = [];
+      _loadTemplates();
       notifyListeners();
     } else {
       _auth = auth;
     }
+  }
+
+  void _loadTemplates() {
+    _templatesSub?.cancel();
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null) {
+      _templates = [];
+      return;
+    }
+    _templatesSub = _db
+        .collection('organizations')
+        .doc(orgId)
+        .collection('whatsappTemplates')
+        .where('available', isEqualTo: true)
+        .snapshots()
+        .listen(
+      (snap) {
+        _templates = snap.docs
+            .map((d) => {'id': d.id, ...d.data()})
+            .toList();
+        notifyListeners();
+      },
+      onError: (e) => debugPrint('Templates listener error: $e'),
+    );
   }
 
   /// Send a free-form WhatsApp reply via the backend (24h window).
@@ -75,6 +103,19 @@ class ChatProvider extends ChangeNotifier {
     final result = await _wa!.reEnableAI(orgId: orgId, leadId: leadId);
     _isTogglingAi = false;
     notifyListeners();
+    return result;
+  }
+
+  /// Send an approved WhatsApp template (for when the 24h window is closed).
+  Future<WhatsAppResult> sendTemplate(String leadId, String templateId, List<String> parameters) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null) return WhatsAppResult.failure('Not signed in.');
+    final result = await _wa!.sendTemplate(
+      orgId: orgId,
+      leadId: leadId,
+      templateId: templateId,
+      parameters: parameters,
+    );
     return result;
   }
 

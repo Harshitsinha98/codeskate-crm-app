@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/notification_model.dart';
+import '../models/activity_model.dart';
 import 'auth_provider.dart';
 
 class NotificationsProvider extends ChangeNotifier {
@@ -9,9 +10,11 @@ class NotificationsProvider extends ChangeNotifier {
 
   AuthProvider? _auth;
   List<NotificationModel> _notifications = [];
+  List<ActivityModel> _activity = [];
   bool _isLoading = false;
 
   StreamSubscription? _subscription;
+  StreamSubscription? _activitySub;
 
   List<NotificationModel> get notifications => _notifications;
   List<NotificationModel> get unreadNotifications =>
@@ -19,6 +22,9 @@ class NotificationsProvider extends ChangeNotifier {
   int get unreadCount => _notifications.where((n) => !n.read).length;
   bool get isLoading => _isLoading;
   bool get hasUnread => unreadCount > 0;
+
+  /// Recent org-wide activity (admin/owner only, up to 50 items).
+  List<ActivityModel> get activity => _activity;
 
   void updateAuth(AuthProvider auth) {
     if (_auth?.user?.activeOrgId != auth.user?.activeOrgId ||
@@ -32,11 +38,13 @@ class NotificationsProvider extends ChangeNotifier {
 
   void _startListening() {
     _subscription?.cancel();
+    _activitySub?.cancel();
 
     final orgId = _auth?.user?.activeOrgId;
     final uid = _auth?.user?.uid;
     if (orgId == null || uid == null) {
       _notifications = [];
+      _activity = [];
       notifyListeners();
       return;
     }
@@ -44,6 +52,7 @@ class NotificationsProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
+    // Unread notifications for this user.
     _subscription = _db
         .collection('organizations')
         .doc(orgId)
@@ -67,6 +76,32 @@ class NotificationsProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+
+    // Activity stream (admin/owner only — mirrors web CRM NotificationsContext).
+    final role = _auth?.user?.activeOrgRole;
+    final isAdmin = role == 'admin' || role == 'owner';
+    if (isAdmin) {
+      _activitySub = _db
+          .collection('organizations')
+          .doc(orgId)
+          .collection('activity')
+          .orderBy('at', descending: true)
+          .limit(50)
+          .snapshots()
+          .listen(
+        (snapshot) {
+          _activity = snapshot.docs
+              .map((doc) => ActivityModel.fromFirestore(doc))
+              .toList();
+          notifyListeners();
+        },
+        onError: (e) {
+          debugPrint('Activity listener error: $e');
+        },
+      );
+    } else {
+      _activity = [];
+    }
   }
 
   Future<void> markAsRead(String notificationId) async {
@@ -107,6 +142,7 @@ class NotificationsProvider extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _activitySub?.cancel();
     super.dispose();
   }
 }

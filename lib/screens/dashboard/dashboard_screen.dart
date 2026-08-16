@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/leads_provider.dart';
 import '../../providers/notifications_provider.dart';
+import '../../models/activity_model.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/quick_action_card.dart';
 import '../widgets/lead_mini_card.dart';
@@ -358,6 +359,30 @@ class DashboardScreen extends StatelessWidget {
               ),
             ),
 
+          // ── Activity Stream (admin only) ──
+          if (notifs.activity.isNotEmpty) ...[
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
+              sliver: SliverToBoxAdapter(
+                child: const SectionHeader(title: 'Recent activity'),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              sliver: SliverToBoxAdapter(
+                child: AppCard(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Column(
+                    children: notifs.activity
+                        .take(10)
+                        .map((a) => _ActivityRow(activity: a))
+                        .toList(),
+                  ),
+                ).animate().fadeIn(delay: 200.ms),
+              ),
+            ),
+          ],
+
           const SliverToBoxAdapter(child: SizedBox(height: 28)),
         ],
       ),
@@ -440,6 +465,96 @@ class _HeroChip extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+
+/// Single row in the activity timeline.
+class _ActivityRow extends StatelessWidget {
+  final ActivityModel activity;
+  const _ActivityRow({required this.activity});
+
+  IconData _icon() {
+    final t = activity.type ?? '';
+    if (t.contains('call')) return Icons.phone_rounded;
+    if (t.contains('status')) return Icons.swap_horiz_rounded;
+    if (t.contains('created') || t.contains('new')) return Icons.person_add_rounded;
+    if (t.contains('assign')) return Icons.group_rounded;
+    if (t.contains('whatsapp') || t.contains('message')) return Icons.chat_rounded;
+    if (t.contains('follow')) return Icons.event_note_rounded;
+    if (t.contains('won') || t.contains('closed')) return Icons.verified_rounded;
+    return Icons.circle_rounded;
+  }
+
+  Color _color() {
+    final t = activity.type ?? '';
+    if (t.contains('call')) return AppColors.info;
+    if (t.contains('won') || t.contains('closed')) return AppColors.success;
+    if (t.contains('lost')) return AppColors.error;
+    if (t.contains('whatsapp')) return AppColors.whatsapp;
+    if (t.contains('follow')) return AppColors.warning;
+    return AppColors.textTertiary;
+  }
+
+  String _timeAgo() {
+    final dt = activity.at;
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _color();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: c.withOpacity(0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(_icon(), size: 13, color: c),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  activity.text,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _timeAgo(),
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

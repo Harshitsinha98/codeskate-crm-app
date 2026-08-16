@@ -20,6 +20,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   final _scrollController = ScrollController();
   final _messageController = TextEditingController();
 
+  bool _showTemplates = false;
+
   @override
   void initState() {
     super.initState();
@@ -55,13 +57,24 @@ class _ConversationScreenState extends State<ConversationScreen> {
       });
     } else {
       final msg = result.code == 'template_required'
-          ? 'The 24-hour reply window has closed. An approved template is required (use the web CRM).'
+          ? null // handled below: show template picker
           : result.code == 'no_backend'
               ? 'Backend URL not set. Run with --dart-define=BACKEND_URL=...'
               : (result.error ?? 'Could not send message.');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: AppColors.error),
-      );
+      if (result.code == 'template_required') {
+        // Auto-show the template picker when the 24h window is closed.
+        setState(() => _showTemplates = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('24h window closed. Select a template below to message this lead.'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      } else if (msg != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
@@ -197,6 +210,13 @@ class _ConversationScreenState extends State<ConversationScreen> {
                     ),
             ),
 
+            // Template picker (shown when 24h window closed or user taps icon)
+            if (_showTemplates)
+              _TemplatePicker(
+                leadId: widget.leadId,
+                onClose: () => setState(() => _showTemplates = false),
+              ),
+
             // Reply composer
             Container(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -226,6 +246,26 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             contentPadding:
                                 EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Template button
+                    GestureDetector(
+                      onTap: () => setState(() => _showTemplates = !_showTemplates),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: _showTemplates
+                              ? AppColors.primary.withOpacity(0.12)
+                              : AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Icon(
+                          Icons.description_rounded,
+                          size: 18,
+                          color: _showTemplates ? AppColors.primary : AppColors.textTertiary,
                         ),
                       ),
                     ),
@@ -432,6 +472,286 @@ class _AiStatusBar extends StatelessWidget {
                 ),
         ],
       ),
+    );
+  }
+}
+
+
+
+/// Collapsible template picker with parameter inputs and send button.
+class _TemplatePicker extends StatefulWidget {
+  final String leadId;
+  final VoidCallback onClose;
+
+  const _TemplatePicker({required this.leadId, required this.onClose});
+
+  @override
+  State<_TemplatePicker> createState() => _TemplatePickerState();
+}
+
+class _TemplatePickerState extends State<_TemplatePicker> {
+  String? _selectedId;
+  List<TextEditingController> _paramControllers = [];
+  bool _sending = false;
+
+  Map<String, dynamic>? get _selected {
+    final templates = context.read<ChatProvider>().templates;
+    return templates.where((t) => t['id'] == _selectedId).firstOrNull;
+  }
+
+  void _selectTemplate(String id, int paramCount) {
+    setState(() {
+      _selectedId = id;
+      for (final c in _paramControllers) {
+        c.dispose();
+      }
+      _paramControllers =
+          List.generate(paramCount, (_) => TextEditingController());
+    });
+  }
+
+  Future<void> _send() async {
+    if (_selectedId == null) return;
+    final params = _paramControllers.map((c) => c.text.trim()).toList();
+    if (params.any((p) => p.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fill all template values before sending.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _sending = true);
+    final chat = context.read<ChatProvider>();
+    final result = await chat.sendTemplate(widget.leadId, _selectedId!, params);
+    if (!mounted) return;
+    setState(() => _sending = false);
+
+    if (result.ok) {
+      widget.onClose();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Template sent!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.error ?? 'Could not send template.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _paramControllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chat = context.watch<ChatProvider>();
+    final templates = chat.templates;
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 280),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
+            child: Row(
+              children: [
+                Icon(Icons.description_rounded,
+                    size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'Send approved template',
+                    style: TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  onPressed: widget.onClose,
+                  color: AppColors.textTertiary,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ),
+
+          // Template list or parameter inputs
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: _selectedId == null
+                  ? _buildTemplateList(templates)
+                  : _buildParamInputs(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTemplateList(List<Map<String, dynamic>> templates) {
+    if (templates.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text(
+          'No approved templates synced. Ask an admin to sync from Automation.',
+          style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+        ),
+      );
+    }
+    return Column(
+      children: templates.map((t) {
+        final name = t['name']?.toString() ?? 'Template';
+        final lang = t['language']?.toString() ?? '';
+        final preview = t['preview']?.toString() ?? '';
+        final paramCount = (t['parameterCount'] as num?)?.toInt() ?? 0;
+        return GestureDetector(
+          onTap: () => _selectTemplate(t['id'].toString(), paramCount),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '$name · $lang',
+                        style: const TextStyle(
+                            fontSize: 12.5, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded,
+                        size: 16, color: AppColors.textTertiary),
+                  ],
+                ),
+                if (preview.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    preview,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textTertiary),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildParamInputs() {
+    final t = _selected;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Back to list
+        GestureDetector(
+          onTap: () => setState(() => _selectedId = null),
+          child: Row(
+            children: [
+              Icon(Icons.arrow_back_rounded,
+                  size: 14, color: AppColors.primary),
+              const SizedBox(width: 4),
+              Text(
+                t?['name']?.toString() ?? 'Template',
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary),
+              ),
+            ],
+          ),
+        ),
+        if (t?['preview'] != null) ...[
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              t!['preview'].toString(),
+              style: const TextStyle(
+                  fontSize: 11.5, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        ..._paramControllers.asMap().entries.map((e) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: TextField(
+              controller: e.value,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                labelText: 'Value for {{${e.key + 1}}}',
+                labelStyle: const TextStyle(fontSize: 12),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _sending ? null : _send,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.whatsapp,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: _sending
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.send_rounded, size: 16),
+            label: Text(_sending ? 'Sending…' : 'Send template'),
+          ),
+        ),
+      ],
     );
   }
 }
