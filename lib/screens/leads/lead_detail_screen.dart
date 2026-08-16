@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../providers/leads_provider.dart';
-import '../../models/lead_model.dart';
 import 'call_options_sheet.dart';
 
 class LeadDetailScreen extends StatelessWidget {
