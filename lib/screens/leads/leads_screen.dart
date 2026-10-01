@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../core/constants/app_constants.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/leads_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../models/lead_model.dart';
 import '../widgets/lead_mini_card.dart';
 import '../widgets/ui_kit.dart';
+import 'lead_action_sheets.dart';
 
 class LeadsScreen extends StatefulWidget {
   const LeadsScreen({super.key});
@@ -48,11 +50,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   @override
   Widget build(BuildContext context) {
     final leads = context.watch<LeadsProvider>();
-    final statuses = ['All', ...AppConstants.leadStatuses];
+    final statuses = ['All', ...context.watch<SettingsProvider>().statuses];
+    final isAdmin = context.watch<AuthProvider>().user?.isAdmin ?? false;
     final filteredLeads = _filterLeads(leads.leads);
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      floatingActionButton: isAdmin
+          ? FloatingActionButton.extended(
+              onPressed: () => showAddLeadSheet(context),
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('New lead'),
+            )
+          : null,
       appBar: AppBar(
         backgroundColor: AppColors.background,
         surfaceTintColor: Colors.transparent,
@@ -201,7 +213,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
                         itemCount: filteredLeads.length,
                         itemBuilder: (context, index) {
                           final lead = filteredLeads[index];

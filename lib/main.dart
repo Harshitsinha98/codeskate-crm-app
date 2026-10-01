@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -47,9 +48,16 @@ void main() {
     // initializeApp() again throws [core/duplicate-app]. We swallow ONLY that
     // error (the app is already initialized and usable) and surface any other.
     try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      // Android reads its config from android/app/google-services.json, so we
+      // don't pass the (placeholder) Dart options there. Other platforms need
+      // real values in firebase_options.dart (run `flutterfire configure`).
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        if (Firebase.apps.isEmpty) await Firebase.initializeApp();
+      } else {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      }
     } on FirebaseException catch (e, st) {
       if (e.code != 'duplicate-app') {
         runApp(_StartupError(message: 'Firebase init failed:\n\n$e\n\n$st'));
