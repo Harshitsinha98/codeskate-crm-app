@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/lead_model.dart';
 import '../models/followup_model.dart';
+import '../models/note_model.dart';
+import '../services/crm_service.dart';
 import 'auth_provider.dart';
 
 class LeadsProvider extends ChangeNotifier {
@@ -129,6 +131,143 @@ class LeadsProvider extends ChangeNotifier {
 
   List<FollowUpModel> getFollowUpsForLead(String leadId) {
     return _followUps.where((f) => f.leadId == leadId).toList();
+  }
+
+  FollowUpModel? openFollowUpForLead(String leadId) {
+    for (final f in _followUps) {
+      if (f.leadId == leadId && f.isOpen) return f;
+    }
+    return null;
+  }
+
+  // ── Notes ────────────────────────────────────────────────────────────────
+
+  /// Live notes for a lead, newest first. Employees may only read team
+  /// worknotes (Firestore rules), so their query is constrained to match.
+  Stream<List<NoteModel>> notesStream(String leadId) {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null) return const Stream.empty();
+    Query<Map<String, dynamic>> q = _db
+        .collection('organizations')
+        .doc(orgId)
+        .collection('leads')
+        .doc(leadId)
+        .collection('notes');
+    if (!(_auth?.user?.isAdmin ?? false)) {
+      q = q.where('visibility', isEqualTo: 'team').where('type', isEqualTo: 'worknote');
+    }
+    return q.snapshots().map((snap) {
+      final notes = snap.docs.map(NoteModel.fromFirestore).toList();
+      notes.sort((a, b) => (b.at ?? DateTime(0)).compareTo(a.at ?? DateTime(0)));
+      return notes;
+    });
+  }
+
+  /// Adds a team-visible worknote (allowed client-side by Firestore rules
+  /// for admins and for the lead's assignee).
+  Future<String?> addNote(String leadId, String text) async {
+    final user = _auth?.user;
+    final orgId = user?.activeOrgId;
+    final trimmed = text.trim();
+    if (user == null || orgId == null) return 'Not signed in';
+    if (trimmed.isEmpty) return 'Note cannot be empty';
+    try {
+      await _db
+          .collection('organizations')
+          .doc(orgId)
+          .collection('leads')
+          .doc(leadId)
+          .collection('notes')
+          .add({
+        'type': 'worknote',
+        'text': trimmed.length > 2000 ? trimmed.substring(0, 2000) : trimmed,
+        'authorId': user.uid,
+        'authorName': user.name,
+        'authorRole': user.activeOrgRole ?? 'employee',
+        'visibility': 'team',
+        'at': DateTime.now().toUtc().toIso8601String(),
+      });
+      return null;
+    } catch (e) {
+      debugPrint('addNote error: $e');
+      return 'Could not save note';
+    }
+  }
+
+  // ── Secured backend workflows ────────────────────────────────────────────
+
+  CrmService? get _crm => _auth == null ? null : CrmService(_auth!.getIdToken);
+
+  /// Returns null on success, or an error message.
+  Future<String?> updateLeadStatus(String leadId, String status) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null || _crm == null) return 'Not signed in';
+    final r = await _crm!.updateLeadStatus(orgId: orgId, leadId: leadId, status: status);
+    return r.ok ? null : r.error;
+  }
+
+  Future<String?> reassignLead(String leadId, String assignedTo) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null || _crm == null) return 'Not signed in';
+    final r = await _crm!.reassignLead(orgId: orgId, leadId: leadId, assignedTo: assignedTo);
+    return r.ok ? null : r.error;
+  }
+
+  Future<String?> scheduleFollowUp({
+    required String leadId,
+    required DateTime dueAt,
+    required String type,
+    String? title,
+  }) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null || _crm == null) return 'Not signed in';
+    final r = await _crm!.scheduleFollowUp(
+        orgId: orgId, leadId: leadId, dueAt: dueAt, type: type, title: title);
+    return r.ok ? null : r.error;
+  }
+
+  Future<String?> completeFollowUp({
+    required FollowUpModel task,
+    required String outcome,
+    String? note,
+    String? leadStatus,
+    DateTime? nextDueAt,
+  }) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null || _crm == null) return 'Not signed in';
+    final r = await _crm!.completeFollowUp(
+      orgId: orgId,
+      taskId: task.id,
+      expectedRevision: task.revision,
+      outcome: outcome,
+      note: note,
+      leadStatus: leadStatus,
+      nextDueAt: nextDueAt,
+    );
+    return r.ok ? null : r.error;
+  }
+
+  /// Admin-only: create a lead through the quota-enforcing backend.
+  Future<String?> createLead({
+    required String name,
+    required String phone,
+    String? email,
+    String? requirement,
+    String priority = 'Warm',
+  }) async {
+    final orgId = _auth?.user?.activeOrgId;
+    if (orgId == null || _crm == null) return 'Not signed in';
+    final r = await _crm!.createManualLead(
+      orgId: orgId,
+      name: name,
+      phone: phone,
+      email: email,
+      requirement: requirement,
+      priority: priority,
+    );
+    if (!r.ok) return r.error;
+    if (r.data['duplicate'] == true) return 'A lead with this phone already exists';
+    return null;
   }
 
   List<FollowUpModel> get overdueFollowUpsList =>

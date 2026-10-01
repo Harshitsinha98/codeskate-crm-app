@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/leads_provider.dart';
 import '../../models/followup_model.dart';
+import '../leads/lead_action_sheets.dart';
 
 class FollowUpsScreen extends StatefulWidget {
   const FollowUpsScreen({super.key});
@@ -113,9 +114,14 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> with SingleTickerProv
           followUp: items[index],
           isOverdue: isOverdue,
           onTap: () {
-            if (items[index].leadId.isNotEmpty) {
-              context.push('/lead/${items[index].leadId}');
-            }
+            final item = items[index];
+            showFollowUpActionsSheet(
+              context,
+              item,
+              onOpenLead: item.leadId.isEmpty
+                  ? null
+                  : () => context.push('/lead/${item.leadId}'),
+            );
           },
         ).animate(delay: Duration(milliseconds: 50 * index))
             .slideY(begin: 0.1, duration: 300.ms)

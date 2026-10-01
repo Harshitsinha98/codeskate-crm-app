@@ -4,21 +4,22 @@ A beautiful, modern CRM mobile application built with Flutter for managing leads
 
 ## Features
 
-- **Phone OTP Login** - Secure Firebase Phone Authentication
+- **Phone OTP Login** - Backend multichannel OTP (WhatsApp → SMS → Voice) exchanged for a Firebase custom token
 - **Dashboard** - Overview stats, quick actions, recent leads
-- **Leads Management** - View, search, filter leads by status
-- **WhatsApp Conversations** - View WhatsApp message threads with leads
-- **Employee Chat** - Internal team messaging
-- **Notifications** - Real-time push notifications
-- **Follow-ups** - Track overdue, today, and upcoming follow-up tasks
-- **Settings** - Profile, organization, preferences
+- **Leads Management** - Search/filter, change status, reassign (admin), add leads (admin), team notes timeline
+- **Follow-ups** - Schedule, complete (with outcome), reschedule; overdue / today / upcoming tabs
+- **WhatsApp Conversations** - Reply, approved templates, AI takeover / re-enable, call from the chat
+- **Calling** - Bridge calls, direct dial, native Android call logging, call history & recordings
+- **Team Chat** - Firestore-backed org-wide "General" channel + 1:1 direct messages
+- **Notifications** - In-app notification feed (real-time Firestore listener)
+- **Billing** - Add-on packs and Voice Wallet top-ups via Razorpay
+- **Settings** - Org switcher, lead-status editor (admin), help & support, about
 
 ## Tech Stack
 
 - **Flutter** - Cross-platform mobile framework (Android first, iOS later)
-- **Firebase Auth** - Phone OTP authentication
+- **Firebase Auth** - Custom-token sign-in after backend OTP
 - **Cloud Firestore** - Real-time database
-- **Firebase Messaging** - Push notifications
 - **Provider** - State management
 - **GoRouter** - Declarative routing
 - **flutter_animate** - Smooth animations
@@ -81,17 +82,17 @@ bash scripts/setup_android.sh
 #    and place it here:
 #      android/app/google-services.json
 
-# 5. Update lib/firebase_options.dart with your Firebase values
-#    (or run: flutterfire configure --platforms=android)
+# 5. Android reads Firebase config from google-services.json only.
+#    (lib/firebase_options.dart is used for iOS/web — run
+#    `flutterfire configure` before targeting those platforms.)
 
 # 6. Run on a connected device / emulator
 flutter run
 ```
 
-> **Phone OTP note:** In Firebase Console, enable Authentication -> Sign-in
-> method -> Phone, add your debug SHA-1 (get it via
-> `cd android && ./gradlew signingReport`) to the Android app, and optionally
-> add a test phone number + code for deterministic testing.
+> **OTP note:** Login uses the backend's `POST /api/v1/otp/send` and
+> `POST /api/v1/otp/verify` (which returns a Firebase custom token), so
+> Firebase Phone Auth / SHA-1 setup is not required.
 
 ### Firebase Collections Used
 
@@ -102,8 +103,34 @@ The app connects to the same Firestore backend as the web CRM:
 - `organizations/{orgId}/notifications` - User notifications
 - `organizations/{orgId}/leads/{leadId}/messages` - WhatsApp messages
 - `organizations/{orgId}/settings/config` - Org settings
+- `organizations/{orgId}/leads/{leadId}/notes` - Lead notes (worknotes, call logs)
+- `organizations/{orgId}/teamChats/{chatId}/messages` - Team chat
 - `memberships` - User organization memberships
 - `users` - User profiles
+
+## Lead & Follow-up Workflows
+
+Lead status, assignment and follow-up tasks are server-owned in Firestore
+rules, so the app calls the same secured endpoints as the web CRM
+(`lib/services/crm_service.dart`):
+
+- `POST /api/follow-ups/:leadId/status` — `{ orgId, status }`
+- `POST /api/follow-ups/:leadId/reassign` — `{ orgId, assignedTo }` (admin)
+- `POST /api/follow-ups/schedule` — `{ orgId, leadId, dueAt, type, title? }`
+- `POST /api/follow-ups/:taskId/complete` — `{ orgId, expectedRevision, outcome, note?, leadStatus?, nextDueAt? }`
+- `POST /api/leads/manual` — `{ orgId, name, phone, email?, requirement?, priority }` (admin)
+
+Team worknotes are written directly to Firestore (allowed by rules for admins
+and the lead's assignee).
+
+## Team Chat
+
+`organizations/{orgId}/teamChats/general` is an org-wide channel;
+`dm_{uidA}__{uidB}` (sorted uids) are 1:1 threads. Access is enforced by the
+`teamChats` block in `SNS-ADS-ERP/firestore.rules` — **deploy those rules**
+(`firebase deploy --only firestore:rules`) before shipping this build.
+Admins can start a DM with any member; employees can use General and reply to
+DMs (rules don't let employees list the org's memberships).
 
 ## Brand Theme
 

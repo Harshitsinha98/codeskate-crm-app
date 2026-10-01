@@ -6,6 +6,7 @@ import '../../core/theme/app_colors.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/leads_provider.dart';
 import '../../models/message_model.dart';
+import '../leads/call_options_sheet.dart';
 
 class ConversationScreen extends StatefulWidget {
   final String leadId;
@@ -157,7 +158,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.phone_rounded, size: 20),
-            onPressed: () {},
+            tooltip: 'Call',
+            onPressed: lead == null ? null : () => showCallOptionsSheet(context, lead),
           ),
         ],
       ),

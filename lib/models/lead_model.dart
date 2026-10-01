@@ -56,8 +56,8 @@ class LeadModel {
       blacklisted: data['blacklisted'] ?? false,
       aiEnabled: data['aiEnabled'] ?? true,
       createdAt: _parseTimestamp(data['createdAt']),
-      updatedAt: _parseTimestamp(data['updatedAt']),
-      lastContactAt: _parseTimestamp(data['lastContactAt']),
+      updatedAt: _parseTimestamp(data['updatedAt'] ?? data['lastUpdated']),
+      lastContactAt: _parseTimestamp(data['lastContactAt'] ?? data['lastContactedAt']),
       metadata: data['metadata'],
     );
   }
@@ -78,8 +78,8 @@ class LeadModel {
       blacklisted: data['blacklisted'] ?? false,
       aiEnabled: data['aiEnabled'] ?? true,
       createdAt: _parseTimestamp(data['createdAt']),
-      updatedAt: _parseTimestamp(data['updatedAt']),
-      lastContactAt: _parseTimestamp(data['lastContactAt']),
+      updatedAt: _parseTimestamp(data['updatedAt'] ?? data['lastUpdated']),
+      lastContactAt: _parseTimestamp(data['lastContactAt'] ?? data['lastContactedAt']),
       metadata: data['metadata'],
     );
   }

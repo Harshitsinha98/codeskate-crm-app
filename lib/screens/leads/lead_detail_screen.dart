@@ -7,8 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../models/note_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/leads_provider.dart';
 import 'call_options_sheet.dart';
+import 'lead_action_sheets.dart';
 
 class LeadDetailScreen extends StatelessWidget {
   final String leadId;
@@ -41,6 +44,8 @@ class LeadDetailScreen extends StatelessWidget {
     }
 
     final followUps = leads.getFollowUpsForLead(leadId);
+    final openFollowUp = leads.openFollowUpForLead(leadId);
+    final isAdmin = context.watch<AuthProvider>().user?.isAdmin ?? false;
 
     return Scaffold(
       body: CustomScrollView(
@@ -166,6 +171,45 @@ class LeadDetailScreen extends StatelessWidget {
             ),
           ),
 
+          // Workflow actions (all go through the secured backend)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Row(
+                children: [
+                  _ActionButton(
+                    icon: Icons.flag_rounded,
+                    label: 'Status',
+                    color: _statusColor(lead.status),
+                    onTap: () => showStatusPickerSheet(context, lead),
+                  ),
+                  const SizedBox(width: 10),
+                  _ActionButton(
+                    icon: openFollowUp != null
+                        ? Icons.task_alt_rounded
+                        : Icons.event_available_rounded,
+                    label: openFollowUp != null ? 'Complete' : 'Follow-up',
+                    color: AppColors.secondary,
+                    onTap: lead.isClosed && openFollowUp == null
+                        ? null
+                        : () => openFollowUp != null
+                            ? showCompleteFollowUpSheet(context, openFollowUp)
+                            : showScheduleFollowUpSheet(context, lead),
+                  ),
+                  if (isAdmin) ...[
+                    const SizedBox(width: 10),
+                    _ActionButton(
+                      icon: Icons.person_add_alt_1_rounded,
+                      label: 'Assign',
+                      color: AppColors.primary,
+                      onTap: () => showReassignSheet(context, lead),
+                    ),
+                  ],
+                ],
+              ).animate().slideY(begin: 0.1, duration: 300.ms).fadeIn(delay: 150.ms),
+            ),
+          ),
+
           // Lead Info Card
           SliverToBoxAdapter(
             child: Padding(
@@ -173,7 +217,10 @@ class LeadDetailScreen extends StatelessWidget {
               child: _InfoCard(
                 title: 'Lead Details',
                 children: [
-                  _InfoRow(label: 'Status', value: lead.status, valueColor: _statusColor(lead.status)),
+                  GestureDetector(
+                    onTap: () => showStatusPickerSheet(context, lead),
+                    child: _InfoRow(label: 'Status', value: lead.status, valueColor: _statusColor(lead.status)),
+                  ),
                   if (lead.priority != null)
                     _InfoRow(label: 'Priority', value: lead.priority!),
                   if (lead.source != null)
@@ -213,7 +260,11 @@ class LeadDetailScreen extends StatelessWidget {
                   final fu = followUps[index];
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    child: Container(
+                    child: GestureDetector(
+                      onTap: fu.isOpen
+                          ? () => showFollowUpActionsSheet(context, fu)
+                          : null,
+                      child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: fu.isOverdue
@@ -280,12 +331,21 @@ class LeadDetailScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    ),
                   );
                 },
                 childCount: followUps.length,
               ),
             ),
           ],
+
+          // Notes / activity timeline
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _NotesSection(leadId: leadId),
+            ),
+          ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
@@ -412,6 +472,159 @@ class _InfoRow extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                     color: valueColor ?? AppColors.textPrimary,
                   ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Live notes timeline for a lead with an "add note" composer.
+class _NotesSection extends StatefulWidget {
+  final String leadId;
+  const _NotesSection({required this.leadId});
+
+  @override
+  State<_NotesSection> createState() => _NotesSectionState();
+}
+
+class _NotesSectionState extends State<_NotesSection> {
+  final _controller = TextEditingController();
+  late Stream<List<NoteModel>> _stream;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = context.read<LeadsProvider>().notesStream(widget.leadId);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _saving = true);
+    final err = await context.read<LeadsProvider>().addNote(widget.leadId, text);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (err == null) {
+      _controller.clear();
+      FocusScope.of(context).unfocus();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(err), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _InfoCard(
+      title: 'Notes & Activity',
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                minLines: 1,
+                maxLines: 4,
+                maxLength: 2000,
+                decoration: const InputDecoration(
+                  hintText: 'Add a note for the team…',
+                  counterText: '',
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded, size: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        StreamBuilder<List<NoteModel>>(
+          stream: _stream,
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return const Text('Could not load notes.',
+                  style: TextStyle(color: AppColors.textTertiary, fontSize: 12));
+            }
+            if (!snap.hasData) {
+              return const Padding(
+                padding: EdgeInsets.all(12),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              );
+            }
+            final notes = snap.data!;
+            if (notes.isEmpty) {
+              return const Text('No notes yet.',
+                  style: TextStyle(color: AppColors.textTertiary, fontSize: 12));
+            }
+            return Column(
+              children: notes.map((n) => _NoteTile(note: n)).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _NoteTile extends StatelessWidget {
+  final NoteModel note;
+  const _NoteTile({required this.note});
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = note.isCall ? Icons.call_rounded : Icons.sticky_note_2_rounded;
+    final color = note.isCall ? AppColors.success : AppColors.info;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 15, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(note.text, style: const TextStyle(fontSize: 13, height: 1.35)),
+                const SizedBox(height: 3),
+                Text(
+                  [
+                    note.authorName ?? 'System',
+                    if (note.at != null) DateFormat('MMM dd, hh:mm a').format(note.at!),
+                    if (note.isCall && note.duration != null) '${note.duration}s',
+                    if (note.isAdminOnly) 'admin only',
+                  ].join(' • '),
+                  style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                ),
+              ],
             ),
           ),
         ],
