@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "198172798900",
+    "project_id": "sns-ads-erp",
+    "storage_bucket": "sns-ads-erp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:198172798900:android:a074d9b596d115c6370ce1",
+        "android_client_info": {
+          "package_name": "com.codeskate.crm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzGYjPc0lv5mL5LFz7LS4rI6p9KQuDKHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

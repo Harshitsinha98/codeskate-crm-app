@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants/app_constants.dart';
 import '../models/user_model.dart';
+import '../services/crm_api.dart';
+import '../services/push_service.dart';
 
 enum AuthState { initial, loading, authenticated, unauthenticated, otpSent, error }
 
@@ -193,18 +196,34 @@ class AuthProvider extends ChangeNotifier {
       final uid = firebaseUser.uid;
       final phone = firebaseUser.phoneNumber;
 
-      final membershipsSnap = await _db
-          .collection('memberships')
-          .where('uid', isEqualTo: uid)
-          .where('active', isEqualTo: true)
-          .get();
+      Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> loadMemberships() async {
+        final snap = await _db
+            .collection('memberships')
+            .where('uid', isEqualTo: uid)
+            .where('active', isEqualTo: true)
+            .get();
+        return snap.docs.where((doc) {
+          final expiresAtMs = (doc.data()['expiresAtMs'] as num?)?.toInt();
+          return expiresAtMs == null ||
+              expiresAtMs == 0 ||
+              expiresAtMs > DateTime.now().millisecondsSinceEpoch;
+        }).toList();
+      }
 
-      final activeMemberships = membershipsSnap.docs.where((doc) {
-        final expiresAtMs = doc.data()['expiresAtMs'] as int?;
-        return expiresAtMs == null ||
-            expiresAtMs == 0 ||
-            expiresAtMs > DateTime.now().millisecondsSinceEpoch;
-      }).toList();
+      var activeMemberships = await loadMemberships();
+
+      // A newly invited teammate has no membership until their pending
+      // invite is claimed (same as the web CRM's claimTeamInvites).
+      if (activeMemberships.isEmpty) {
+        try {
+          await TeamApi.claimInvites().timeout(const Duration(seconds: 12));
+          activeMemberships = await loadMemberships();
+        } catch (e) {
+          debugPrint('claimInvites failed: $e');
+        }
+      } else {
+        TeamApi.claimInvites().catchError((_) {});
+      }
 
       if (activeMemberships.isEmpty) {
         _user = UserModel(uid: uid, phone: phone, needsSetup: true);
@@ -225,8 +244,14 @@ class AuthProvider extends ChangeNotifier {
         );
       }).toList();
 
-      final activeOrgId = memberships.first.orgId;
-      final activeMembership = memberships.first;
+      // Prefer the org the user last worked in, then their default org.
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('activeOrgId_$uid');
+      final defaultOrg = userDoc.data()?['defaultOrgId']?.toString();
+      final activeMembership = memberships.where((m) => m.orgId == saved).firstOrNull ??
+          memberships.where((m) => m.orgId == defaultOrg).firstOrNull ??
+          memberships.first;
+      final activeOrgId = activeMembership.orgId;
 
       final orgDoc =
           await _db.collection('organizations').doc(activeOrgId).get();
@@ -267,6 +292,8 @@ class AuthProvider extends ChangeNotifier {
   // ── Sign out ───────────────────────────────────────────────────────────────
 
   Future<void> signOut() async {
+    // Needs a valid ID token, so unregister the device before signing out.
+    await PushService.instance.unregister().timeout(const Duration(seconds: 6), onTimeout: () {});
     await _auth.signOut();
     _user = null;
     _autoVerified = false;
@@ -286,6 +313,8 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final orgDoc = await _db.collection('organizations').doc(orgId).get();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('activeOrgId_${_user!.uid}', orgId);
       _user = UserModel(
         uid: _user!.uid,
         phone: _user!.phone,
@@ -312,6 +341,12 @@ class AuthProvider extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Re-reads memberships/profile (e.g. after the trial workspace is created).
+  Future<void> reloadProfile() async {
+    final u = _auth.currentUser;
+    if (u != null) await _loadUserProfile(u);
   }
 
   void clearError() {

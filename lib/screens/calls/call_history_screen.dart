@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/bridge_call_service.dart';
+import '../widgets/premium.dart';
 
 /// Admin/owner screen: bridge call history + recordings, backed by
 /// /api/v1/bridge-call/history and /recordings.
@@ -39,13 +40,16 @@ class _CallHistoryScreenState extends State<CallHistoryScreen>
   Widget build(BuildContext context) {
     final orgId = context.read<AuthProvider>().user?.activeOrgId;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Calls'),
+      appBar: PremiumAppBar(
+        title: 'Calls & recordings',
+        subtitle: 'Bridge call history',
+        bottomHeight: 46,
         bottom: TabBar(
           controller: _tabs,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textTertiary,
-          indicatorColor: AppColors.primary,
+          labelColor: Colors.white,
+          unselectedLabelColor: AppColors.textOnDarkMuted,
+          indicatorColor: AppColors.orange400,
+          dividerColor: Colors.transparent,
           tabs: const [
             Tab(text: 'History'),
             Tab(text: 'Recordings'),

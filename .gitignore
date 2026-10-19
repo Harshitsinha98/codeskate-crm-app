@@ -64,10 +64,10 @@ pubspec.lock
 **/ios/ServiceDefinitions.json
 **/ios/Runner/GeneratedPluginRegistrant.*
 
-# Firebase
-google-services.json
-GoogleService-Info.plist
+# Firebase (client config IS committed; never commit service-account keys)
 firebase_app_id_file.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
 
 # Environment
 .env

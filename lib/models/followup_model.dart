@@ -15,6 +15,8 @@ class FollowUpModel {
   final DateTime? dueAt;
   final DateTime? completedAt;
   final DateTime? createdAt;
+  /// Optimistic-concurrency revision; the backend requires it to complete.
+  final int revision;
 
   FollowUpModel({
     required this.id,
@@ -31,6 +33,7 @@ class FollowUpModel {
     this.dueAt,
     this.completedAt,
     this.createdAt,
+    this.revision = 1,
   });
 
   factory FollowUpModel.fromFirestore(DocumentSnapshot doc) {
@@ -49,11 +52,12 @@ class FollowUpModel {
       type: data['type'] ?? 'Call',
       status: data['status'] ?? 'open',
       title: data['title'],
-      note: data['note'],
+      note: data['completionNote'] ?? data['note'],
       outcome: data['outcome'],
       dueAt: _parseTimestamp(data['dueAt']),
       completedAt: _parseTimestamp(data['completedAt']),
       createdAt: _parseTimestamp(data['createdAt']),
+      revision: (data['revision'] as num?)?.toInt() ?? 1,
     );
   }
 

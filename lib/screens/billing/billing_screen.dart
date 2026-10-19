@@ -8,6 +8,7 @@ import '../../models/billing_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/billing_provider.dart';
 import '../../services/razorpay_checkout.dart';
+import '../widgets/premium.dart';
 
 class BillingScreen extends StatefulWidget {
   const BillingScreen({super.key});
@@ -60,7 +61,7 @@ class _BillingScreenState extends State<BillingScreen> {
     final org = billing.org;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Billing & Add-ons')),
+      appBar: const PremiumAppBar(title: 'Plan & billing', subtitle: 'Subscription · add-ons'),
       body: RefreshIndicator(
         color: AppColors.primary,
         onRefresh: () => billing.loadBillingData(),

@@ -1,210 +1,69 @@
-# Codeskate CRM - Flutter Mobile App
+# Codeskate CRM — Flutter app (Android + iOS)
 
-A beautiful, modern CRM mobile application built with Flutter for managing leads, WhatsApp conversations, follow-ups, and team collaboration.
+Premium mobile companion for the Codeskate web CRM (`SNS-ADS-ERP`). Same
+Firebase project (`sns-ads-erp`), same backend (`https://api.codeskate.com`),
+same data — every web admin/employee module is available in the app.
 
 ## Features
 
-- **Phone OTP Login** - Secure Firebase Phone Authentication
-- **Dashboard** - Overview stats, quick actions, recent leads
-- **Leads Management** - View, search, filter leads by status
-- **WhatsApp Conversations** - View WhatsApp message threads with leads
-- **Employee Chat** - Internal team messaging
-- **Notifications** - Real-time push notifications
-- **Follow-ups** - Track overdue, today, and upcoming follow-up tasks
-- **Settings** - Profile, organization, preferences
+| Area | What's in the app |
+|---|---|
+| Auth | WhatsApp → SMS → Voice OTP, Firebase custom token, auto-claim team invites, org switcher, free-trial workspace setup |
+| Dashboard | Live pipeline, KPIs, 14-day lead flow, status donut, lead sources, team leaderboard, today's follow-ups, live activity |
+| Leads | Search, status/source/priority filters, Meta-ad badges, add lead, bulk paste import, status, priority, assign, follow-ups, timeline, blacklist/delete |
+| Shared WhatsApp inbox | Unclaimed / Mine / Unread / AI filters, claim · release · hand over · take over, AI resume, 24h-window aware composer, approved templates, internal team notes |
+| Meta ads | Click-to-WhatsApp attribution (ad headline, ad ID, ctwa_clid), Lead Ads, per-ad leads / win-rate report |
+| Broadcasts | Template campaigns with audience filters, live audience preview, schedule, analytics, per-recipient status, retry/cancel |
+| Team | Invite by phone, roles, deactivate, monthly goals, bulk reassign |
+| Automation & AI | Workflow builder (trigger → conditions → actions, draft/publish/rollback, test-run, runs), follow-up automation, AI customer care (settings, knowledge base, playground, analytics), product catalogue |
+| Channels | WhatsApp status/sync/repair/templates, Google Ads webhook, website form + API key, Codeskate Voice status |
+| More | Internal tickets, team chat, bridge calls & recordings, Android call tracking, billing add-ons & voice wallet (Razorpay), AI help desk, push notifications |
 
-## Tech Stack
+Done on the web by design: WhatsApp Embedded Signup, Meta page connect, buying
+a voice number / KYC upload, plan subscription changes, platform owner console.
+The app deep-links to `app.codeskate.com` for these.
 
-- **Flutter** - Cross-platform mobile framework (Android first, iOS later)
-- **Firebase Auth** - Phone OTP authentication
-- **Cloud Firestore** - Real-time database
-- **Firebase Messaging** - Push notifications
-- **Provider** - State management
-- **GoRouter** - Declarative routing
-- **flutter_animate** - Smooth animations
-
-## Architecture
-
-```
-lib/
-├── main.dart                    # App entry point
-├── firebase_options.dart        # Firebase config
-├── core/
-│   ├── theme/                   # AppColors, AppTheme (warm beige/orange brand)
-│   ├── routes/                  # GoRouter configuration
-│   └── constants/               # App constants
-├── models/                      # Data models (Lead, FollowUp, Notification, etc.)
-├── providers/                   # State management (Auth, Leads, Chat, etc.)
-└── screens/
-    ├── splash_screen.dart
-    ├── auth/                    # Login, OTP screens
-    ├── home/                    # Bottom navigation shell
-    ├── dashboard/               # Stats dashboard
-    ├── leads/                   # Leads list & detail
-    ├── whatsapp/                # WhatsApp conversations
-    ├── chat/                    # Employee team chat
-    ├── notifications/           # Notifications list
-    ├── followups/               # Follow-up tasks
-    ├── settings/                # App settings
-    └── widgets/                 # Reusable UI components
-```
-
-## Setup
-
-### Prerequisites
-- Flutter SDK 3.1+
-- Android Studio or VS Code with Flutter plugin
-- Firebase project (same backend as SNS-ADS-ERP web CRM)
-
-### Configuration (Android)
-
-The repo intentionally does **not** commit the generated Android Gradle
-wrapper / launcher icons. Generate them with `flutter create`, then run the
-setup script which applies the Firebase (Google Services) configuration.
+## Run
 
 ```bash
-# 1. Clone and enter the project
-git clone --branch feature/flutter-crm-app --single-branch \
-  https://github.com/Harshitsinha98/codeskate-crm-app.git
-cd codeskate-crm-app
-
-# 2. Generate the Android platform files
-flutter create --platforms=android .
 flutter pub get
-
-# 3. Apply the Firebase Android configuration (Gradle + package name)
-bash scripts/setup_android.sh
-
-# 4. Add your Firebase config file (NEVER commit this)
-#    Download google-services.json from Firebase Console
-#    (Project Settings -> your Android app: com.codeskate.crm)
-#    and place it here:
-#      android/app/google-services.json
-
-# 5. Update lib/firebase_options.dart with your Firebase values
-#    (or run: flutterfire configure --platforms=android)
-
-# 6. Run on a connected device / emulator
-flutter run
+flutter run                     # Android or iOS device/simulator
+flutter build apk --release     # Android
+flutter build ipa               # iOS (macOS + Xcode + Apple signing)
 ```
 
-> **Phone OTP note:** In Firebase Console, enable Authentication -> Sign-in
-> method -> Phone, add your debug SHA-1 (get it via
-> `cd android && ./gradlew signingReport`) to the Android app, and optionally
-> add a test phone number + code for deterministic testing.
+Override the backend with `--dart-define=BACKEND_URL=https://…`.
 
-### Firebase Collections Used
+Firebase client config is committed (`android/app/google-services.json`,
+`ios/Runner/GoogleService-Info.plist`, `lib/firebase_options.dart`). These are
+public identifiers; **never** add a service-account key to this repo.
 
-The app connects to the same Firestore backend as the web CRM:
+### iOS notes
+- Bundle ID `com.codeskate.crm`, iOS 15+, Push + background remote-notification enabled.
+- Push on iOS needs an APNs auth key (`.p8`) uploaded in Firebase Console → Cloud Messaging.
+- Apple doesn't allow reading the call log, so automatic call logging is Android-only.
 
-- `organizations/{orgId}/leads` - Lead documents
-- `organizations/{orgId}/followUpTasks` - Follow-up tasks
-- `organizations/{orgId}/notifications` - User notifications
-- `organizations/{orgId}/leads/{leadId}/messages` - WhatsApp messages
-- `organizations/{orgId}/settings/config` - Org settings
-- `memberships` - User organization memberships
-- `users` - User profiles
+### CI
+`.github/workflows/build.yml` builds a release APK (ubuntu) and an unsigned iOS
+build (macOS) on every push; download them from the run's artifacts.
 
-## Brand Theme
+## Backend requirements
 
-- **Primary:** Warm Orange (#E8652B)
-- **Background:** Soft Beige (#FFF8F2)
-- **Font:** Poppins (Google Fonts)
-- **Design:** Card-based UI with smooth animations
+Deploy `SNS-ADS-ERP` branch `feat/ctwa-ads-and-mobile-push`, which adds:
+- Click-to-WhatsApp ad attribution on inbound messages.
+- `POST /api/v1/devices/register|unregister` + FCM push dispatcher.
+- Firestore rules for team chat and indexes (`firebase deploy --only firestore`).
 
-## Platform Support
+## Code map
 
-- ✅ Android (primary target)
-- 🔄 iOS (planned)
-- ❌ Web (use the existing web CRM instead)
-
-
-## WhatsApp Reply & AI Handoff (Mobile)
-
-The conversation screen now supports the full AI-to-human handoff flow, matching
-the web CRM:
-
-- **AI status bar** at the top of each conversation shows whether AI is
-  auto-replying or a human has taken over (driven by the lead's `aiEnabled`
-  flag).
-- **Take over** pauses AI for that lead; **Re-enable AI** resumes it.
-- A **reply composer** lets agents send free-form WhatsApp messages (valid
-  inside the 24-hour service window). If the window has closed, the backend
-  returns `template_required` and the user is told to use an approved template.
-
-These actions call the same backend as the web app, so you must point the app
-at your backend:
-
-```bash
-flutter run --dart-define=BACKEND_URL=https://your-backend-host
+```
+lib/core/api/api_client.dart       Authenticated JSON client
+lib/services/crm_api.dart          Typed wrappers for every backend endpoint
+lib/services/push_service.dart     FCM registration, foreground display, tap routing
+lib/providers/                     Auth, leads, inbox, team, chat, settings, billing…
+lib/screens/widgets/premium.dart   Motion UI kit (aurora, glow buttons, counters, sheets)
+lib/screens/…                      One folder per module
 ```
 
-Endpoints used (Firebase ID token sent as Bearer):
-- `POST /api/whatsapp/messages` — `{ orgId, leadId, text, clientMessageId }`
-- `POST /api/v1/chat-sessions/takeover` — `{ orgId, leadId, reason }`
-- `POST /api/v1/chat-sessions/re-enable-ai` — `{ orgId, leadId }`
-
-If `BACKEND_URL` is not set, message history still loads (read-only) but
-sending/takeover are disabled with a clear message.
-
-## Native Call Tracking (Android)
-
-After a call ends, the app reads the latest completed call from the Android
-CallLog, matches it to a lead by the last 10 digits of the phone number, and
-writes a `call` note to `organizations/{orgId}/leads/{leadId}/notes` (idempotent
-by `call_{callLogId}`). This mirrors the reference Capacitor plugin.
-
-- Permissions `READ_PHONE_STATE` and `READ_CALL_LOG` are requested at runtime
-  (added to the manifest automatically by `scripts/setup_android.sh`).
-- Native code lives in `scripts/android_templates/` and is installed into the
-  generated Android project by the setup script.
-- Tracking runs while the app is in the foreground/resumed; a catch-up check on
-  resume (`getLastCall`) handles a call that ended while backgrounded. Android
-  OEM background limits mean this is best-effort, not a persistent service.
-
-
-## In-App Purchases — Add-ons & Voice Wallet (Razorpay)
-
-Admins can buy add-on packs and top up the Voice Wallet directly from the app.
-**Subscriptions/plan changes stay on the web dashboard** — the app links out to
-it — but everything else (AI reply packs, extra seats/leads, catalogue, wallet
-top-ups) is purchasable in-app via Razorpay, using the same backend as the web
-CRM. No backend changes are required.
-
-### Where
-- **Settings → Billing & Add-ons** (`/billing`): live plan status, AI-reply
-  usage, and the list of purchasable add-on packs (server-driven via
-  `GET /api/billing/quota-status`). Non-admins see a read-only plan view.
-- **Settings → Voice Wallet** (`/wallet`): balance, top-up (₹100 min, presets
-  ₹500/1000/2000/5000 or custom), and transaction history. Gated to Growth+
-  plans, matching the web app.
-
-### Purchase flow (mirrors the web CRM)
-1. `POST /api/billing/razorpay/addon/order` `{ orgId, addOnId, quantity }`
-   (or `POST /api/wallet/order` `{ orgId, amountInr }`) → `{ orderId, amount,
-   currency, keyId }`.
-2. Open Razorpay Checkout (native `razorpay_flutter`) with those values.
-3. On success → `POST /api/billing/razorpay/addon/verify`
-   (or `POST /api/wallet/verify`) with
-   `{ razorpay_order_id, razorpay_payment_id, razorpay_signature }`.
-4. The app re-fetches quota/balance; the live org listener reflects new limits.
-
-### Setup
-- `razorpay_flutter` is already in `pubspec.yaml`. Run `flutter pub get`.
-- Android `minSdk` is 23 (≥ 19 required) via `scripts/setup_android.sh`.
-- The backend must have `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` configured
-  (it already is for the web CRM). The publishable key is returned per-order, so
-  no key is hard-coded in the app.
-- If you enable code shrinking for release (`minifyEnabled true`), add the
-  Razorpay ProGuard rules from https://pub.dev/packages/razorpay_flutter.
-
-Backend base URL defaults to `https://api.codeskate.com`; override with
-`--dart-define=BACKEND_URL=https://your-backend-host`.
-
-### Code map
-- `lib/services/billing_service.dart` — REST client (mirrors web `billingApi.js`)
-- `lib/services/razorpay_checkout.dart` — awaitable wrapper over `razorpay_flutter`
-- `lib/providers/billing_provider.dart` — org listener + purchase orchestration
-- `lib/models/billing_models.dart` — OrgBilling / AddOn / QuotaStatus / Wallet*
-- `lib/screens/billing/billing_screen.dart` — plan status + add-on store
-- `lib/screens/billing/wallet_screen.dart` — wallet balance + top-up
+Brand: Orange `#FF6B1A` · Ember `#C74E24` · Cream `#FDF8F0` · Midnight `#0F0C0A`,
+Space Grotesk / Inter / JetBrains Mono — same tokens as the web CRM.

@@ -30,14 +30,31 @@ class AppConstants {
     'Lost',
   ];
 
-  // Follow-up task types
+  // Follow-up task types (must match TASK_TYPES in backend followUpTasks.js)
   static const List<String> followUpTypes = [
     'Call',
     'WhatsApp',
-    'Email',
     'Meeting',
-    'Visit',
+    'Email',
+    'Other',
   ];
+
+  // Follow-up completion outcomes (must match TASK_OUTCOMES in the backend)
+  static const List<String> followUpOutcomes = [
+    'Connected',
+    'No answer',
+    'Follow-up required',
+    'Meeting fixed',
+    'Closed-won',
+    'Lost',
+  ];
+
+  static const List<String> leadPriorities = ['Hot', 'Warm', 'Cold'];
+
+  static const String appVersion = '1.0.0';
+  static const String supportEmail = 'hello@codeskate.com';
+  static const String supportWhatsApp = 'https://wa.me/919653043939';
+  static const String webAppUrl = 'https://app.codeskate.com';
 
   // Pagination
   static const int leadsPageSize = 50;

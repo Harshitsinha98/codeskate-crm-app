@@ -10,6 +10,8 @@ class MessageModel {
   final String? to;
   final String? status; // sent, delivered, read, failed
   final String? templateName;
+  final String? senderName;
+  final String? error;
   final Map<String, dynamic>? media;
   final Map<String, dynamic>? metadata;
 
@@ -23,6 +25,8 @@ class MessageModel {
     this.to,
     this.status,
     this.templateName,
+    this.senderName,
+    this.error,
     this.media,
     this.metadata,
   });
@@ -38,11 +42,13 @@ class MessageModel {
       text: data['text'] ?? data['body'],
       direction: data['direction'] ?? 'inbound',
       type: data['type'] ?? 'text',
-      timestamp: _parseTimestamp(data['timestamp'] ?? data['at']),
+      timestamp: _parseTimestamp(data['atMs'] ?? data['at'] ?? data['timestamp']),
       from: data['from'],
       to: data['to'],
       status: data['status'],
       templateName: data['templateName'],
+      senderName: data['senderName'],
+      error: data['error']?.toString(),
       media: data['media'],
       metadata: data['metadata'],
     );
@@ -52,7 +58,11 @@ class MessageModel {
     if (value == null) return null;
     if (value is Timestamp) return value.toDate();
     if (value is String) return DateTime.tryParse(value);
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+    if (value is num) {
+      final v = value.toInt();
+      // Epoch ms (backend `atMs`) vs. legacy epoch seconds.
+      return DateTime.fromMillisecondsSinceEpoch(v > 100000000000 ? v : v * 1000);
+    }
     return null;
   }
 

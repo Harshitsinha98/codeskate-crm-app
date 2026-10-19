@@ -1,15 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pinput/pinput.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_theme.dart';
 import '../../providers/auth_provider.dart';
+import '../widgets/premium.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
-
   const OtpScreen({super.key, required this.phoneNumber});
 
   @override
@@ -17,293 +21,177 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  final _otpController = TextEditingController();
-  final _focusNode = FocusNode();
-  bool _isVerifying = false;
-  bool _canResend = false;
-  int _resendCountdown = 30;
-
-  AuthProvider? _auth;
+  final _otp = TextEditingController();
+  final _focus = FocusNode();
+  bool _verifying = false;
+  int _countdown = 30;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _startResendTimer();
+    _startTimer();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _auth ??= context.read<AuthProvider>()..addListener(_onAuthChanged);
+  void _startTimer() {
+    _timer?.cancel();
+    setState(() => _countdown = 30);
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return t.cancel();
+      setState(() => _countdown--);
+      if (_countdown <= 0) t.cancel();
+    });
   }
 
-  /// Navigate automatically when auth state changes (profile loaded).
-  void _onAuthChanged() {
+  Future<void> _verify(String code) async {
+    if (code.length != 6 || _verifying) return;
+    setState(() => _verifying = true);
+    final ok = await context.read<AuthProvider>().verifyOtp(code);
     if (!mounted) return;
-    final auth = _auth;
-    if (auth == null) return;
-    // GoRouter redirect handles navigation once isAuthenticated is true.
-    // No manual context.go needed — the router's refreshListenable
-    // re-evaluates redirect whenever auth state changes.
-  }
-
-  void _startResendTimer() {
-    setState(() {
-      _canResend = false;
-      _resendCountdown = 30;
-    });
-
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return false;
-      setState(() => _resendCountdown--);
-      if (_resendCountdown <= 0) {
-        setState(() => _canResend = true);
-        return false;
-      }
-      return true;
-    });
-  }
-
-  Future<void> _verifyOtp(String otp) async {
-    if (otp.length != 6) return;
-
-    setState(() => _isVerifying = true);
-    final auth = context.read<AuthProvider>();
-    await auth.verifyOtp(otp);
-
-    if (mounted) {
-      setState(() => _isVerifying = false);
-      // Navigation handled by GoRouter redirect when auth becomes authenticated.
+    setState(() => _verifying = false);
+    if (!ok) {
+      HapticFeedback.heavyImpact();
+      _otp.clear();
+      _focus.requestFocus();
     }
+    // On success the router redirect moves to the dashboard.
   }
 
-  Future<void> _resendOtp() async {
-    if (!_canResend) return;
-    final auth = context.read<AuthProvider>();
-    await auth.resendOtp(widget.phoneNumber);
-    _startResendTimer();
+  Future<void> _resend([String? channel]) async {
+    if (_countdown > 0) return;
+    await context.read<AuthProvider>().resendOtp(widget.phoneNumber, channel: channel);
+    _startTimer();
   }
 
   @override
   void dispose() {
-    _auth?.removeListener(_onAuthChanged);
-    _otpController.dispose();
-    _focusNode.dispose();
+    _timer?.cancel();
+    _otp.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  String get _channelLabel {
+    switch (context.read<AuthProvider>().otpChannel) {
+      case 'sms':
+        return 'SMS';
+      case 'voice':
+        return 'a voice call';
+      default:
+        return 'WhatsApp';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final defaultPinTheme = PinTheme(
-      width: 52,
-      height: 56,
-      textStyle: Theme.of(context).textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
+    final auth = context.watch<AuthProvider>();
+    final pin = PinTheme(
+      width: 50,
+      height: 60,
+      textStyle: AppText.mono(size: 22, color: Colors.white),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
       ),
     );
 
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.warmGradient),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-
-                // Back button
-                IconButton(
-                  onPressed: () => context.go('/login'),
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.arrow_back_rounded, size: 20),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: AppColors.midnight900,
+        body: AuroraBackground(
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 26),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const SizedBox(height: 12),
+                Pressable(
+                  onTap: () => context.go('/login'),
+                  child: const GlassPanel(
+                    padding: EdgeInsets.all(10),
+                    radius: 14,
+                    child: Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.white),
                   ),
-                ).animate().fadeIn(duration: 300.ms),
-
-                const SizedBox(height: 40),
-
-                // OTP illustration
-                Center(
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryLight.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(
-                      Icons.lock_outline_rounded,
-                      size: 40,
-                      color: AppColors.primary,
-                    ),
+                ),
+                const SizedBox(height: 48),
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: AppColors.glow(),
                   ),
-                ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
-
-                const SizedBox(height: 32),
-
-                // Header
-                Text(
-                  'Verify OTP',
-                  style: Theme.of(context).textTheme.displayMedium,
-                ).animate().slideX(begin: -0.2, duration: 400.ms).fadeIn(delay: 100.ms),
-
+                  child: const Icon(Icons.shield_moon_rounded, color: Colors.white, size: 30),
+                ).animate().scale(duration: 500.ms, curve: Curves.easeOutBack),
+                const SizedBox(height: 26),
+                Text('Enter the code', style: AppText.display(size: 32, color: Colors.white, letterSpacing: -1))
+                    .animate()
+                    .fadeIn(delay: 100.ms)
+                    .slideY(begin: 0.2),
                 const SizedBox(height: 8),
-
-                RichText(
-                  text: TextSpan(
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textTertiary,
-                          height: 1.5,
-                        ),
-                    children: [
-                      const TextSpan(text: 'We sent a 6-digit code to '),
-                      TextSpan(
-                        text: '+91 ${widget.phoneNumber}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ).animate().fadeIn(delay: 200.ms, duration: 400.ms),
-
-                const SizedBox(height: 40),
-
-                // OTP Input
+                Text.rich(
+                  TextSpan(style: AppText.body(size: 14.5, color: AppColors.textOnDarkMuted, height: 1.5), children: [
+                    TextSpan(text: 'We sent a 6-digit code on $_channelLabel to '),
+                    TextSpan(text: '+91 ${widget.phoneNumber}', style: AppText.body(size: 14.5, weight: FontWeight.w700, color: Colors.white)),
+                  ]),
+                ).animate().fadeIn(delay: 200.ms),
+                const SizedBox(height: 36),
                 Center(
                   child: Pinput(
-                    controller: _otpController,
-                    focusNode: _focusNode,
+                    controller: _otp,
+                    focusNode: _focus,
                     length: 6,
                     autofocus: true,
-                    defaultPinTheme: defaultPinTheme,
-                    focusedPinTheme: defaultPinTheme.copyWith(
-                      decoration: defaultPinTheme.decoration?.copyWith(
-                        border: Border.all(color: AppColors.primary, width: 2),
-                      ),
+                    defaultPinTheme: pin,
+                    focusedPinTheme: pin.copyDecorationWith(
+                      border: Border.all(color: AppColors.orange400, width: 1.8),
+                      boxShadow: AppColors.glow(AppColors.orange500, 0.3),
                     ),
-                    submittedPinTheme: defaultPinTheme.copyWith(
-                      decoration: defaultPinTheme.decoration?.copyWith(
-                        color: AppColors.surfaceVariant,
-                        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                      ),
+                    submittedPinTheme: pin.copyDecorationWith(
+                      color: AppColors.orange500.withValues(alpha: 0.14),
+                      border: Border.all(color: AppColors.orange400.withValues(alpha: 0.6)),
                     ),
-                    errorPinTheme: defaultPinTheme.copyWith(
-                      decoration: defaultPinTheme.decoration?.copyWith(
-                        border: Border.all(color: AppColors.error),
-                      ),
-                    ),
-                    onCompleted: _verifyOtp,
+                    errorPinTheme: pin.copyDecorationWith(border: Border.all(color: AppColors.error)),
+                    forceErrorState: auth.error.isNotEmpty && !_verifying,
+                    onCompleted: _verify,
                     hapticFeedbackType: HapticFeedbackType.lightImpact,
                   ),
-                ).animate().slideY(begin: 0.2, duration: 400.ms).fadeIn(delay: 300.ms),
-
-                const SizedBox(height: 16),
-
-                // Error
-                Consumer<AuthProvider>(
-                  builder: (context, auth, _) {
-                    if (auth.error.isEmpty) return const SizedBox.shrink();
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppColors.errorLight,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: AppColors.error, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              auth.error,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppColors.error,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 32),
-
-                // Verify button
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _isVerifying ? null : () => _verifyOtp(_otpController.text),
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: _isVerifying
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                          )
-                        : const Text('Verify & Login'),
-                  ),
-                ).animate().slideY(begin: 0.2, duration: 400.ms).fadeIn(delay: 400.ms),
-
-                const SizedBox(height: 24),
-
-                // Resend
-                Center(
-                  child: _canResend
-                      ? TextButton(
-                          onPressed: _resendOtp,
-                          child: Text(
-                            'Resend OTP',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        )
-                      : Text(
-                          'Resend in ${_resendCountdown}s',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: AppColors.textTertiary,
-                              ),
+                ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.15),
+                AnimatedSwitcher(
+                  duration: 250.ms,
+                  child: auth.error.isEmpty
+                      ? const SizedBox(height: 24)
+                      : Padding(
+                          key: ValueKey(auth.error),
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Row(children: [
+                            const Icon(Icons.error_outline_rounded, size: 16, color: Color(0xFFF87171)),
+                            const SizedBox(width: 6),
+                            Expanded(child: Text(auth.error, style: AppText.body(size: 13, color: const Color(0xFFFCA5A5)))),
+                          ]),
                         ),
-                ).animate().fadeIn(delay: 500.ms),
-
-                const SizedBox(height: 40),
-              ],
+                ),
+                const SizedBox(height: 24),
+                GlowButton(
+                  label: auth.isLoading && !_verifying ? 'Setting up your workspace…' : 'Verify & continue',
+                  icon: Icons.lock_open_rounded,
+                  loading: _verifying || auth.isLoading,
+                  onPressed: () => _verify(_otp.text),
+                ).animate().fadeIn(delay: 400.ms),
+                const SizedBox(height: 22),
+                Center(
+                  child: _countdown > 0
+                      ? Text('Resend code in ${_countdown}s', style: AppText.body(size: 13.5, color: AppColors.midnight300))
+                      : Wrap(alignment: WrapAlignment.center, spacing: 4, children: [
+                          TextButton(onPressed: () => _resend(), child: Text('Resend', style: AppText.body(size: 13.5, weight: FontWeight.w700, color: AppColors.orange300))),
+                          TextButton(onPressed: () => _resend('sms'), child: Text('Try SMS', style: AppText.body(size: 13.5, weight: FontWeight.w700, color: AppColors.orange300))),
+                          TextButton(onPressed: () => _resend('voice'), child: Text('Call me', style: AppText.body(size: 13.5, weight: FontWeight.w700, color: AppColors.orange300))),
+                        ]),
+                ),
+                const SizedBox(height: 32),
+              ]),
             ),
           ),
         ),
