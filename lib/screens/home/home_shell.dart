@@ -1,235 +1,147 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../providers/notifications_provider.dart';
-import '../../providers/auth_provider.dart';
+import '../../core/theme/app_theme.dart';
+import '../../providers/inbox_provider.dart';
 import '../../providers/leads_provider.dart';
-import '../../services/call_tracker_service.dart';
 
-class HomeShell extends StatefulWidget {
+/// Root shell with a floating frosted-glass tab bar and a sliding gradient
+/// indicator. Call tracking + push are bound in main.dart.
+class HomeShell extends StatelessWidget {
   final Widget child;
-
   const HomeShell({super.key, required this.child});
 
-  @override
-  State<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<HomeShell> {
-  int _currentIndex = 0;
-  bool _callTrackerStarted = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Start native call tracking once we're logged in (Android only, no-op
-    // elsewhere). Reads latest auth/leads via provider callbacks at event time.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initCallTracker());
-  }
-
-  void _initCallTracker() {
-    if (_callTrackerStarted) return;
-    final auth = context.read<AuthProvider>();
-    if (auth.user?.activeOrgId == null) return;
-    final leads = context.read<LeadsProvider>();
-    CallTrackerService.instance.configure(
-      getOrgId: () => auth.user?.activeOrgId,
-      getUid: () => auth.user?.uid,
-      getUserName: () => auth.user?.name ?? 'Employee',
-      getRole: () => auth.user?.activeOrgRole,
-      getLeads: () => leads.leads,
-    );
-    CallTrackerService.instance.start();
-    _callTrackerStarted = true;
-  }
-
-  @override
-  void dispose() {
-    CallTrackerService.instance.stop();
-    super.dispose();
-  }
-
-  static const _routes = [
-    '/dashboard',
-    '/leads',
-    '/whatsapp',
-    '/followups',
-    '/settings',
+  static const _tabs = [
+    _Tab('/dashboard', 'Home', Icons.space_dashboard_outlined, Icons.space_dashboard_rounded),
+    _Tab('/leads', 'Leads', Icons.people_alt_outlined, Icons.people_alt_rounded),
+    _Tab('/inbox', 'Inbox', Icons.forum_outlined, Icons.forum_rounded),
+    _Tab('/followups', 'Tasks', Icons.event_note_outlined, Icons.event_note_rounded),
+    _Tab('/more', 'More', Icons.grid_view_outlined, Icons.grid_view_rounded),
   ];
 
-  void _onTabTapped(int index) {
-    if (index == _currentIndex) return;
-    setState(() => _currentIndex = index);
-    context.go(_routes[index]);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Sync bottom nav with current route
-    final location = GoRouterState.of(context).matchedLocation;
-    final index = _routes.indexOf(location);
-    if (index != -1 && index != _currentIndex) {
-      setState(() => _currentIndex = index);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final loc = GoRouterState.of(context).matchedLocation;
+    final index = _tabs.indexWhere((t) => loc.startsWith(t.path)).clamp(0, _tabs.length - 1);
+    final unread = context.select<InboxProvider, int>((p) => p.totalUnread);
+    final overdue = context.select<LeadsProvider, int>((p) => p.overdueFollowUps);
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: widget.child,
-      bottomNavigationBar: Consumer<NotificationsProvider>(
-        builder: (context, notifs, _) {
-          return Container(
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(
-                top: BorderSide(color: AppColors.divider, width: 1),
-              ),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _NavItem(
-                      icon: Icons.space_dashboard_outlined,
-                      activeIcon: Icons.space_dashboard_rounded,
-                      label: 'Home',
-                      isSelected: _currentIndex == 0,
-                      onTap: () => _onTabTapped(0),
-                    ),
-                    _NavItem(
-                      icon: Icons.people_alt_outlined,
-                      activeIcon: Icons.people_alt_rounded,
-                      label: 'Leads',
-                      isSelected: _currentIndex == 1,
-                      onTap: () => _onTabTapped(1),
-                    ),
-                    _NavItem(
-                      icon: Icons.chat_bubble_outline_rounded,
-                      activeIcon: Icons.chat_bubble_rounded,
-                      label: 'Chats',
-                      isSelected: _currentIndex == 2,
-                      onTap: () => _onTabTapped(2),
-                    ),
-                    _NavItem(
-                      icon: Icons.event_note_outlined,
-                      activeIcon: Icons.event_note_rounded,
-                      label: 'Tasks',
-                      isSelected: _currentIndex == 3,
-                      onTap: () => _onTabTapped(3),
-                      badge: notifs.unreadCount > 0
-                          ? notifs.unreadCount.toString()
-                          : null,
-                    ),
-                    _NavItem(
-                      icon: Icons.settings_outlined,
-                      activeIcon: Icons.settings_rounded,
-                      label: 'Settings',
-                      isSelected: _currentIndex == 4,
-                      onTap: () => _onTabTapped(4),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final IconData activeIcon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final String? badge;
-
-  const _NavItem({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-    this.badge,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isSelected ? AppColors.primary : AppColors.textTertiary;
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Soft pill behind the active icon.
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      // Body ends above the floating bar so every tab's list stays fully
+      // scrollable without per-screen bottom padding.
+      extendBody: false,
+      body: child,
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              height: 68,
               decoration: BoxDecoration(
-                color: isSelected
-                    ? AppColors.primary.withOpacity(0.10)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(isSelected ? activeIcon : icon, size: 21, color: color),
-                  if (badge != null)
-                    Positioned(
-                      right: -7,
-                      top: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 1),
-                        constraints: const BoxConstraints(minWidth: 15),
-                        decoration: BoxDecoration(
-                          color: AppColors.error,
-                          borderRadius: BorderRadius.circular(999),
-                          border:
-                              Border.all(color: AppColors.surface, width: 1.2),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          badge!,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
-                          ),
-                        ),
-                      ),
-                    ),
+                color: AppColors.midnight900.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                boxShadow: [
+                  BoxShadow(color: AppColors.midnight900.withValues(alpha: 0.25), blurRadius: 30, offset: const Offset(0, 10)),
                 ],
               ),
+              child: LayoutBuilder(builder: (context, c) {
+                final w = c.maxWidth / _tabs.length;
+                return Stack(children: [
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeOutBack,
+                    left: w * index + (w - 52) / 2,
+                    top: 9,
+                    child: Container(
+                      width: 52,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: AppColors.glow(AppColors.orange500, 0.45),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: List.generate(_tabs.length, (i) {
+                      final t = _tabs[i];
+                      final active = i == index;
+                      final badge = i == 2 ? unread : (i == 3 ? overdue : 0);
+                      return Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (active) return;
+                            HapticFeedback.selectionClick();
+                            context.go(t.path);
+                          },
+                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            SizedBox(
+                              height: 32,
+                              child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+                                AnimatedSwitcher(
+                                  duration: 200.ms,
+                                  child: Icon(active ? t.activeIcon : t.icon,
+                                      key: ValueKey(active), size: 21, color: active ? Colors.white : AppColors.midnight300),
+                                ),
+                                if (badge > 0)
+                                  Positioned(
+                                    top: 1,
+                                    right: -12,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      constraints: const BoxConstraints(minWidth: 17),
+                                      decoration: BoxDecoration(
+                                        color: i == 3 ? AppColors.error : AppColors.whatsapp,
+                                        borderRadius: BorderRadius.circular(9),
+                                        border: Border.all(color: AppColors.midnight900, width: 1.5),
+                                      ),
+                                      child: Text(badge > 99 ? '99+' : '$badge',
+                                          textAlign: TextAlign.center,
+                                          style: AppText.body(size: 9.5, weight: FontWeight.w800, color: Colors.white, height: 1.2)),
+                                    ).animate(key: ValueKey(badge)).scale(duration: 300.ms, curve: Curves.elasticOut),
+                                  ),
+                              ]),
+                            ),
+                            const SizedBox(height: 4),
+                            AnimatedDefaultTextStyle(
+                              duration: 200.ms,
+                              style: AppText.body(
+                                size: 10.5,
+                                weight: active ? FontWeight.w700 : FontWeight.w500,
+                                color: active ? Colors.white : AppColors.midnight300,
+                              ),
+                              child: Text(t.label),
+                            ),
+                          ]),
+                        ),
+                      );
+                    }),
+                  ),
+                ]);
+              }),
             ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: color,
-              ),
-              maxLines: 1,
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _Tab {
+  final String path;
+  final String label;
+  final IconData icon;
+  final IconData activeIcon;
+  const _Tab(this.path, this.label, this.icon, this.activeIcon);
 }

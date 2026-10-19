@@ -169,13 +169,16 @@ class ChatProvider extends ChangeNotifier {
         .collection('leads')
         .doc(leadId)
         .collection('messages')
-        .orderBy('timestamp', descending: false)
-        .limit(100)
+        .orderBy('atMs', descending: true)
+        .limit(150)
         .snapshots()
         .listen(
       (snapshot) {
+        // Backend writes `atMs` (epoch ms) on every inbound/outbound message.
         _conversations[leadId] = snapshot.docs
             .map((doc) => MessageModel.fromFirestore(doc))
+            .toList()
+            .reversed
             .toList();
         notifyListeners();
       },

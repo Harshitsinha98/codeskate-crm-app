@@ -8,6 +8,7 @@ import '../../models/billing_models.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/billing_provider.dart';
 import '../../services/razorpay_checkout.dart';
+import '../widgets/premium.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -73,7 +74,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final money = NumberFormat.decimalPattern('en_IN');
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Voice Wallet')),
+      appBar: const PremiumAppBar(title: 'Voice wallet', subtitle: 'Calling balance & top-ups'),
       body: RefreshIndicator(
         color: AppColors.primary,
         onRefresh: () => billing.refreshWallet(),

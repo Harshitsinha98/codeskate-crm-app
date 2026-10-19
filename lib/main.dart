@@ -1,115 +1,94 @@
 import 'dart:async';
+
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import 'firebase_options.dart';
-import 'core/theme/app_theme.dart';
 import 'core/routes/app_router.dart';
+import 'core/theme/app_colors.dart';
+import 'core/theme/app_theme.dart';
+import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
-import 'providers/leads_provider.dart';
-import 'providers/notifications_provider.dart';
-import 'providers/team_provider.dart';
-import 'providers/settings_provider.dart';
-import 'providers/chat_provider.dart';
 import 'providers/billing_provider.dart';
 import 'providers/bridge_call_provider.dart';
+import 'providers/chat_provider.dart';
+import 'providers/inbox_provider.dart';
+import 'providers/leads_provider.dart';
+import 'providers/notifications_provider.dart';
+import 'providers/settings_provider.dart';
+import 'providers/team_provider.dart';
 import 'services/call_tracker_service.dart';
+import 'services/push_service.dart';
 
 void main() {
-  // Surface any build/runtime error ON SCREEN (red text) instead of a blank
-  // white screen, so problems are diagnosable on-device without a debugger.
-  ErrorWidget.builder = (FlutterErrorDetails details) {
-    return Material(
-      color: Colors.white,
-      child: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          alignment: Alignment.topLeft,
-          child: SingleChildScrollView(
+  // Friendly in-place error card (full stack only in debug builds) instead of
+  // a blank screen if a single widget fails to build.
+  ErrorWidget.builder = (details) => Material(
+        color: AppColors.cream100,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
             child: Text(
-              'APP ERROR:\n\n${details.exceptionAsString()}\n\n${details.stack}',
-              style: const TextStyle(color: Colors.red, fontSize: 12, height: 1.4),
+              kDebugMode ? details.exceptionAsString() : 'Something went wrong showing this section.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
           ),
         ),
-      ),
-    );
-  };
+      );
 
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Firebase init. On Android the native google-services plugin auto-creates
-    // the [DEFAULT] app via a ContentProvider BEFORE Dart runs, so calling
-    // initializeApp() again throws [core/duplicate-app]. We swallow ONLY that
-    // error (the app is already initialized and usable) and surface any other.
     try {
-      // Android reads its config from android/app/google-services.json, so we
-      // don't pass the (placeholder) Dart options there. Other platforms need
-      // real values in firebase_options.dart (run `flutterfire configure`).
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-        if (Firebase.apps.isEmpty) await Firebase.initializeApp();
-      } else {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-      }
-    } on FirebaseException catch (e, st) {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    } on FirebaseException catch (e) {
+      // Android's google-services plugin may have created [DEFAULT] already.
       if (e.code != 'duplicate-app') {
-        runApp(_StartupError(message: 'Firebase init failed:\n\n$e\n\n$st'));
+        runApp(_StartupError(message: 'Could not start Firebase:\n$e'));
         return;
       }
-      // duplicate-app → already initialized natively, safe to continue.
-    } catch (e, st) {
-      runApp(_StartupError(message: 'Firebase init failed:\n\n$e\n\n$st'));
+    } catch (e) {
+      runApp(_StartupError(message: 'Could not start Firebase:\n$e'));
       return;
     }
 
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.white,
-        systemNavigationBarIconBrightness: Brightness.dark,
-      ),
-    );
+    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: AppColors.cream100,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ));
 
+    await PushService.instance.init();
     runApp(const CodeskateApp());
   }, (error, stack) {
-    // Any uncaught async error → show it on screen.
-    runApp(_StartupError(message: 'Uncaught error:\n\n$error\n\n$stack'));
+    // Log only — never tear down the running UI for a background error.
+    debugPrint('Uncaught error: $error\n$stack');
   });
 }
 
-/// Full-screen readable error display (used when startup fails).
 class _StartupError extends StatelessWidget {
   final String message;
   const _StartupError({required this.message});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: SingleChildScrollView(
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.red, fontSize: 13, height: 1.4),
-              ),
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: AppColors.midnight900,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, height: 1.5)),
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }
 
 class CodeskateApp extends StatefulWidget {
@@ -128,6 +107,9 @@ class _CodeskateAppState extends State<CodeskateApp> {
     super.initState();
     _authProvider = AuthProvider();
     _router = AppRouter.createRouter(_authProvider);
+    PushService.instance.onNavigate = (route) {
+      if (_authProvider.isAuthenticated) _router.push(route);
+    };
   }
 
   @override
@@ -155,6 +137,10 @@ class _CodeskateAppState extends State<CodeskateApp> {
           create: (_) => ChatProvider(),
           update: (_, auth, chat) => chat!..updateAuth(auth),
         ),
+        ChangeNotifierProxyProvider<AuthProvider, InboxProvider>(
+          create: (_) => InboxProvider(),
+          update: (_, auth, inbox) => inbox!..updateAuth(auth),
+        ),
         ChangeNotifierProxyProvider<AuthProvider, BillingProvider>(
           create: (_) => BillingProvider(),
           update: (_, auth, billing) => billing!..updateAuth(auth),
@@ -164,31 +150,38 @@ class _CodeskateAppState extends State<CodeskateApp> {
           update: (_, auth, bridge) => bridge!..updateAuth(auth),
         ),
       ],
-      child: _CallTrackerBinder(
+      child: _SessionBinder(
         child: MaterialApp.router(
           title: 'Codeskate CRM',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           routerConfig: _router,
+          builder: (context, child) => MediaQuery(
+            // Keep the premium layout intact under very large system fonts.
+            data: MediaQuery.of(context).copyWith(
+              textScaler: MediaQuery.of(context).textScaler.clamp(minScaleFactor: 0.9, maxScaleFactor: 1.25),
+            ),
+            child: child!,
+          ),
         ),
       ),
     );
   }
 }
 
-/// Wires the native Android call tracker to the app lifecycle and auth state.
-class _CallTrackerBinder extends StatefulWidget {
+/// Binds session-scoped services (native call tracker, push registration)
+/// to auth state and app lifecycle.
+class _SessionBinder extends StatefulWidget {
   final Widget child;
-
-  const _CallTrackerBinder({required this.child});
+  const _SessionBinder({required this.child});
 
   @override
-  State<_CallTrackerBinder> createState() => _CallTrackerBinderState();
+  State<_SessionBinder> createState() => _SessionBinderState();
 }
 
-class _CallTrackerBinderState extends State<_CallTrackerBinder>
-    with WidgetsBindingObserver {
-  bool _configured = false;
+class _SessionBinderState extends State<_SessionBinder> with WidgetsBindingObserver {
+  bool _trackerConfigured = false;
+  String? _sessionKey;
 
   @override
   void initState() {
@@ -204,31 +197,35 @@ class _CallTrackerBinderState extends State<_CallTrackerBinder>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      CallTrackerService.instance.catchUp();
-    }
+    if (state == AppLifecycleState.resumed) CallTrackerService.instance.catchUp();
   }
 
-  void _syncTracker() {
+  void _sync() {
     final auth = context.read<AuthProvider>();
-    final signedIn = auth.isAuthenticated && auth.user?.activeOrgId != null;
+    final user = auth.user;
+    final signedIn = auth.isAuthenticated && user?.activeOrgId != null && user?.needsSetup != true;
+    final key = signedIn ? '${user!.uid}:${user.activeOrgId}' : null;
+    if (key == _sessionKey) return;
+    _sessionKey = key;
 
     if (signedIn) {
-      if (!_configured) {
+      if (!_trackerConfigured) {
         CallTrackerService.instance.configure(
           getOrgId: () => context.read<AuthProvider>().user?.activeOrgId,
           getUid: () => context.read<AuthProvider>().user?.uid,
-          getUserName: () =>
-              context.read<AuthProvider>().user?.displayName ?? 'Employee',
+          getUserName: () => context.read<AuthProvider>().user?.displayName ?? 'Employee',
           getRole: () => context.read<AuthProvider>().user?.activeOrgRole,
           getLeads: () => context.read<LeadsProvider>().leads,
         );
-        _configured = true;
+        _trackerConfigured = true;
       }
       CallTrackerService.instance.start();
-    } else if (_configured || CallTrackerService.instance.isRunning) {
-      CallTrackerService.instance.stop();
-      _configured = false;
+      PushService.instance.registerFor(uid: user!.uid, orgId: user.activeOrgId);
+    } else {
+      if (_trackerConfigured || CallTrackerService.instance.isRunning) {
+        CallTrackerService.instance.stop();
+        _trackerConfigured = false;
+      }
     }
   }
 
@@ -236,7 +233,7 @@ class _CallTrackerBinderState extends State<_CallTrackerBinder>
   Widget build(BuildContext context) {
     context.watch<AuthProvider>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncTracker();
+      if (mounted) _sync();
     });
     return widget.child;
   }

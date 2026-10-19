@@ -8,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../providers/leads_provider.dart';
 import '../../models/followup_model.dart';
 import '../leads/lead_action_sheets.dart';
+import '../widgets/premium.dart';
 
 class FollowUpsScreen extends StatefulWidget {
   const FollowUpsScreen({super.key});
@@ -43,15 +44,18 @@ class _FollowUpsScreenState extends State<FollowUpsScreen> with SingleTickerProv
       ..sort((a, b) => (a.dueAt ?? DateTime.now()).compareTo(b.dueAt ?? DateTime.now()));
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Follow-ups'),
+      appBar: PremiumAppBar(
+        title: 'Follow-ups',
+        subtitle: '${overdue.length} overdue · ${today.length} due today',
+        showBack: false,
+        bottomHeight: 46,
         bottom: TabBar(
           controller: _tabController,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textTertiary,
-          indicatorColor: AppColors.primary,
+          labelColor: Colors.white,
+          unselectedLabelColor: AppColors.textOnDarkMuted,
+          indicatorColor: AppColors.orange400,
+          dividerColor: Colors.transparent,
           indicatorWeight: 3,
-          labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           tabs: [
             Tab(text: 'Overdue (${overdue.length})'),
             Tab(text: 'Today (${today.length})'),

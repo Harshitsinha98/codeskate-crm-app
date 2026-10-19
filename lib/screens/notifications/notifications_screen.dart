@@ -6,6 +6,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../core/theme/app_colors.dart';
 import '../../providers/notifications_provider.dart';
 import '../../models/notification_model.dart';
+import '../widgets/premium.dart';
 
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
@@ -34,13 +35,14 @@ class NotificationsScreen extends StatelessWidget {
     final notifs = context.watch<NotificationsProvider>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
+      appBar: PremiumAppBar(
+        title: 'Notifications',
+        subtitle: notifs.unreadCount > 0 ? '${notifs.unreadCount} unread' : 'You\'re all caught up',
         actions: [
           if (notifs.unreadCount > 0)
             TextButton(
               onPressed: () => notifs.markAllAsRead(),
-              child: const Text('Mark all read', style: TextStyle(fontSize: 12)),
+              child: const Text('Mark all read', style: TextStyle(fontSize: 12, color: AppColors.orange300)),
             ),
         ],
       ),

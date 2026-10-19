@@ -9,6 +9,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../widgets/premium.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -20,7 +21,7 @@ class SettingsScreen extends StatelessWidget {
     final user = auth.user;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: const PremiumAppBar(title: 'Settings', subtitle: 'Workspace, pipeline & app'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -39,13 +40,13 @@ class SettingsScreen extends StatelessWidget {
                   icon: Icons.notifications_rounded,
                   title: 'Notifications',
                   subtitle: 'Push notification preferences',
-                  onTap: () => context.go('/notifications'),
+                  onTap: () => context.push('/notifications'),
                 ),
                 _SettingsTile(
                   icon: Icons.group_rounded,
                   title: 'Team',
                   subtitle: '${settings.settings['teamSize'] ?? 'View'} members',
-                  onTap: () => context.go('/chat'),
+                  onTap: () => context.push((user?.isAdmin ?? false) ? '/team' : '/chat'),
                 ),
                 _SettingsTile(
                   icon: Icons.tune_rounded,
