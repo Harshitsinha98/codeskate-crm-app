@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Meta App ID is a public client identifier (safe to keep here). It enables
+# the in-app "Connect Facebook Page" flow for Meta Lead Ads.
+env:
+  META_APP_ID: "1581914519978056"
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -22,7 +27,7 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
-      - run: flutter build apk --release
+      - run: flutter build apk --release --dart-define=META_APP_ID=${{ env.META_APP_ID }}
       - uses: actions/upload-artifact@v4
         with:
           name: codeskate-crm-android
@@ -40,7 +45,7 @@ jobs:
       - run: cd ios && pod install --repo-update
       # Unsigned build proves the iOS project compiles. For TestFlight, add
       # your Apple certificates/provisioning profile and use `flutter build ipa`.
-      - run: flutter build ios --release --no-codesign
+      - run: flutter build ios --release --no-codesign --dart-define=META_APP_ID=${{ env.META_APP_ID }}
       - run: |
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
