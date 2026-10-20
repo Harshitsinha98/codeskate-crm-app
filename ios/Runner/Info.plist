@@ -48,9 +48,9 @@
 		</dict>
 	</dict>
 	<key>FacebookAppID</key>
-	<string>$(FACEBOOK_APP_ID)</string>
+	<string>1581914519978056</string>
 	<key>FacebookClientToken</key>
-	<string>$(FACEBOOK_CLIENT_TOKEN)</string>
+	<string>204b3a13fcefa79f31aee5c4d9972ecf</string>
 	<key>FacebookDisplayName</key>
 	<string>Codeskate CRM</string>
 	<key>FacebookAutoLogAppEventsEnabled</key>
@@ -62,7 +62,7 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>fb$(FACEBOOK_APP_ID)</string>
+				<string>fb1581914519978056</string>
 			</array>
 		</dict>
 	</array>
