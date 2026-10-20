@@ -54,7 +54,7 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   static const String supportEmail = 'hello@codeskate.com';
   static const String supportWhatsApp = 'https://wa.me/919653043939';
-  static const String webAppUrl = 'https://app.codeskate.com';
+  static const String webAppUrl = 'https://crm.codeskate.com';
 
   // Meta Lead Ads — Facebook login (set at build time with --dart-define).
   static const String metaAppId = String.fromEnvironment('META_APP_ID');

@@ -191,7 +191,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                           }, danger: true),
                         ]
                       : [_Btn('Connect on web', Icons.open_in_new_rounded, false, () => _openWeb('/admin/whatsapp'))],
-                  footnote: waConnected ? null : 'Meta Embedded Signup runs in the browser — tap to finish on app.codeskate.com.',
+                  footnote: waConnected ? null : 'Meta Embedded Signup runs in the browser — tap to finish on your web dashboard.',
                 ),
                 _Channel(
                   icon: Icons.ads_click_rounded,
