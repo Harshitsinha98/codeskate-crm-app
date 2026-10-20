@@ -10,6 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/crm_api.dart';
+import '../../services/meta_connect.dart';
 import '../widgets/common_sheets.dart';
 import '../widgets/premium.dart';
 
@@ -63,6 +64,50 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   void _openWeb(String path) => launchUrl(Uri.parse('${AppConstants.webAppUrl}$path'), mode: LaunchMode.externalApplication);
+
+  /// In-app Meta Lead Ads connect: Facebook login → pick a Page → subscribe.
+  Future<void> _connectMeta() async {
+    setState(() => _busy.add('meta'));
+    try {
+      final token = await MetaConnect.login();
+      final pages = await MetaConnect.pages(_orgId, token);
+      if (!mounted) return;
+      if (pages.isEmpty) {
+        AppToast.error(context, 'No eligible Facebook Pages. Use an account with Lead Ads access to the Page.');
+        return;
+      }
+      final pageId = pages.length == 1
+          ? pages.first['id']
+          : await showPremiumSheet<String>(
+              context,
+              title: 'Choose a Facebook Page',
+              subtitle: 'Instant-form leads from this Page enter this workspace',
+              builder: (ctx) => Column(
+                children: pages
+                    .map((p) => PremiumTile(
+                          icon: Icons.flag_rounded,
+                          color: AppColors.meta,
+                          title: p['name'] ?? 'Page',
+                          subtitle: 'Page ID ${p['id']}',
+                          onTap: () => Navigator.pop(ctx, p['id']),
+                        ))
+                    .toList(),
+              ),
+            );
+      if (pageId == null || !mounted) return;
+      final name = await MetaConnect.connect(_orgId, pageId, token);
+      if (mounted) AppToast.success(context, 'Connected "$name" — new ad leads will arrive automatically');
+      _load();
+    } on MetaConnectException catch (e) {
+      if (mounted) AppToast.error(context, e.message);
+    } on ApiException catch (e) {
+      if (mounted) AppToast.error(context, e.message);
+    } catch (e) {
+      if (mounted) AppToast.error(context, 'Meta connect failed. Please try again.');
+    } finally {
+      if (mounted) setState(() => _busy.remove('meta'));
+    }
+  }
 
   Future<void> _showSecret(String title, Map<String, String> values) => showPremiumSheet(
         context,
@@ -167,6 +212,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                             await IntegrationsApi.metaDisconnect(_orgId);
                             return 'Meta Lead Ads disconnected';
                           }), danger: true)
+                    else if (AppConstants.metaAdsEnabled)
+                      _Btn('Connect Facebook Page', Icons.facebook_rounded, _busy.contains('meta'), () => _connectMeta(), primary: true)
                     else
                       _Btn('Connect page', Icons.open_in_new_rounded, false, () => _openWeb('/admin/ad-leads')),
                   ],
