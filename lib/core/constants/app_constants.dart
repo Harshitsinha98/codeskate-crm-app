@@ -54,7 +54,7 @@ class AppConstants {
   static const String appVersion = '1.0.0';
   static const String supportEmail = 'hello@codeskate.com';
   static const String supportWhatsApp = 'https://wa.me/919653043939';
-  static const String webAppUrl = 'https://app.codeskate.com';
+  static const String webAppUrl = 'https://crm.codeskate.com';
 
   // Pagination
   static const int leadsPageSize = 50;

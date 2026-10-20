@@ -1,3 +1,4 @@
+import '../../core/constants/app_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -492,7 +493,7 @@ class _ManageSubscriptionCard extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () async {
-                final uri = Uri.parse('https://app.codeskate.com/admin/billing');
+                final uri = Uri.parse('${AppConstants.webAppUrl}/admin/billing');
                 if (await canLaunchUrl(uri)) {
                   await launchUrl(uri, mode: LaunchMode.externalApplication);
                 }
