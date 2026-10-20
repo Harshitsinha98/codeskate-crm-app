@@ -56,6 +56,11 @@ class AppConstants {
   static const String supportWhatsApp = 'https://wa.me/919653043939';
   static const String webAppUrl = 'https://app.codeskate.com';
 
+  // Meta Lead Ads — Facebook login (set at build time with --dart-define).
+  static const String metaAppId = String.fromEnvironment('META_APP_ID');
+  static const String metaLoginConfigId = String.fromEnvironment('META_LOGIN_CONFIG_ID');
+  static bool get metaAdsEnabled => metaAppId.isNotEmpty;
+
   // Pagination
   static const int leadsPageSize = 50;
   static const int messagesPageSize = 30;
